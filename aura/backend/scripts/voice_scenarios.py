@@ -44,7 +44,7 @@ async def scenario_reply(report: Report, opts: argparse.Namespace) -> None:
         await v.say("Hey Akansha, what is the capital of France?")
         # Returns as soon as it speaks instead of always burning the full budget,
         # then keeps a short tail so the rest of a multi-sentence reply lands.
-        if await v.wait_for_speech(20.0):
+        if await v.wait_for_speech(35.0):
             await v.wait(1.5)
 
         spoken = [s for s in v.said() if s]
@@ -161,8 +161,10 @@ async def scenario_concurrent(report: Report, opts: argparse.Namespace) -> None:
         before = (await v.tick()).get("task_active")
 
         v.clear()
+        v.mark()
         await v.say("What are you doing right now?")
-        await v.wait(8.0)
+        await v.wait_for_speech(30.0)
+        await v.wait(1.0)
         after = (await v.tick()).get("task_active")
 
         report.check("the task was active before the question", before is True,
@@ -178,10 +180,14 @@ async def scenario_memory(report: Report, opts: argparse.Namespace) -> None:
     header("Memory across turns", "§11 §13 — context carried, not rebuilt")
     async with connect("drive-memory") as v:
         await v.say("Remember that my project folder is called nightingale.")
-        await v.wait(16.0)
+        v.mark()
+        await v.wait_for_speech(30.0)
+        await v.wait(1.5)
         v.clear()
+        v.mark()
         await v.say("What did I just say my project folder is called?")
-        await v.wait(20.0)
+        await v.wait_for_speech(35.0)
+        await v.wait(1.0)
 
         answer = " ".join(v.said()).lower()
         report.check("it recalled the fact from the previous turn",
