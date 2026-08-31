@@ -1,5 +1,0 @@
-{
-  "hooks": {
-    "pre_tool_use": "echo 'graphify: Knowledge graph exists at graphify-out/. Read GRAPH_REPORT.md for structural context before searching files.'"
-  }
-}

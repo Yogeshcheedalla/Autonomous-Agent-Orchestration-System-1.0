@@ -49,6 +49,34 @@ class InboxMessage(Base):
     is_read = Column(Boolean, default=False)
     timestamp = Column(DateTime, default=datetime.utcnow)
 
+class UserAccount(Base):
+    __tablename__ = "user_accounts"
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, unique=True, index=True)
+    hashed_password = Column(String, nullable=True)
+    full_name = Column(String, default="User")
+    email_verified = Column(Boolean, default=False)
+    verification_token = Column(String, nullable=True, index=True)
+    reset_token = Column(String, nullable=True, index=True)
+    reset_token_expires_at = Column(DateTime, nullable=True)
+    failed_login_attempts = Column(Integer, default=0)
+    locked_until = Column(DateTime, nullable=True)
+    auth_provider = Column(String, default="email")  # 'email', 'google', 'github', 'passkey'
+    passkey_credential_id = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+class RefreshTokenRecord(Base):
+    __tablename__ = "refresh_token_records"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, index=True)
+    token_hash = Column(String, unique=True, index=True)
+    device_info = Column(String, default="Unknown Device")
+    ip_address = Column(String, nullable=True)
+    expires_at = Column(DateTime, index=True)
+    is_revoked = Column(Boolean, default=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
 class UserProfile(Base):
     __tablename__ = "user_profiles"
     id = Column(Integer, primary_key=True, index=True)
@@ -80,6 +108,23 @@ class IntegrationConnection(Base):
     metadata_json = Column(Text, nullable=True)
     is_connected = Column(Boolean, default=False)
     timestamp = Column(DateTime, default=datetime.utcnow)
+
+class OwnerSecret(Base):
+    """What proves the boss is the boss, kept out of every serialiser.
+
+    Deliberately its own table rather than more columns on `speaker_profiles`:
+    that row is returned wholesale by `serialize_speaker_profile`, and a
+    passphrase hash or a voiceprint vector that rides out to a browser is a
+    forgeable factor. Nothing here is ever included in an API response -- the
+    owner endpoints report *whether* a factor is enrolled, never its value.
+    """
+
+    __tablename__ = "owner_secrets"
+    id = Column(Integer, primary_key=True, index=True)
+    key = Column(String, index=True, unique=True)  # passphrase | voiceprint | pending_challenge
+    value_json = Column(Text, nullable=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
 
 class SpeakerProfile(Base):
     __tablename__ = "speaker_profiles"
@@ -220,9 +265,51 @@ def ensure_chat_message_columns():
 
 ensure_chat_message_columns()
 
+
+class TaskAutomation(Base):
+    __tablename__ = "task_automations"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, index=True)
+    description = Column(Text, nullable=True)
+    trigger_type = Column(String, index=True, default="schedule")  # 'schedule' | 'webhook' | 'event' | 'manual'
+    trigger_config = Column(Text, nullable=True)  # JSON: { interval_minutes: 60, cron: "0 9 * * *", webhook_key: "wh_xxx" }
+    action_type = Column(String, default="ai_workflow")  # 'github_decompose' | 'daily_report' | 'desktop_action' | 'ai_workflow' | 'custom_agent'
+    action_payload = Column(Text, nullable=True)  # JSON: { prompt: "...", repo: "...", channel: "..." }
+    status = Column(String, index=True, default="active")  # 'active' | 'paused' | 'running' | 'error'
+    last_run_at = Column(DateTime, nullable=True)
+    next_run_at = Column(DateTime, nullable=True)
+    run_count = Column(Integer, default=0)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+
+
+class AutomationExecutionLog(Base):
+    __tablename__ = "automation_execution_logs"
+    id = Column(Integer, primary_key=True, index=True)
+    automation_id = Column(Integer, index=True)
+    automation_name = Column(String)
+    trigger_source = Column(String)  # 'schedule' | 'webhook:github' | 'manual'
+    status = Column(String, index=True)  # 'success' | 'failed' | 'running'
+    output_summary = Column(Text, nullable=True)
+    details_json = Column(Text, nullable=True)
+    started_at = Column(DateTime, default=datetime.utcnow)
+    completed_at = Column(DateTime, nullable=True)
+
+
+def ensure_task_automation_tables():
+    with engine.begin() as connection:
+        try:
+            Base.metadata.create_all(bind=connection)
+        except Exception:
+            pass
+
+
+ensure_task_automation_tables()
+
+
 def get_db():
     db = SessionLocal()
     try:
         yield db
     finally:
         db.close()
+

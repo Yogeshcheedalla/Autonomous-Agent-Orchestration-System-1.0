@@ -1,57 +1,73 @@
-@import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
-
+/* Fonts are loaded by `next/font` in src/app/layout.tsx, which self-hosts them
+   and exposes --font-sans / --font-mono. A `@import url(fonts.googleapis.com)`
+   used to sit here and cost three serial round trips before first paint. */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
+  /* Brand tokens.
+     --primary used to be `255 100% 65%` = #794DFF while 203 places in the app
+     hardcoded the brand purple #6C47FF as a Tailwind arbitrary value, so
+     `bg-primary` and the literal shipped two different purples. --accent had
+     the same split (#00C79F vs #00C9A7). Both are now the exact HSL of the
+     brand hex, which is what made replacing those arbitrary values with token
+     utilities a no-op rather than a restyle.
+     Verified: hsl(252 100% 64%) -> #6C47FF, hsl(170 100% 39.4%) -> #00C9A7. */
   :root {
-    --background: 0 0% 98%;
-    --foreground: 240 10% 8%;
-    --card: 0 0% 100%;
-    --card-foreground: 240 10% 8%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 8%;
-    --primary: 255 100% 65%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 240 5% 96%;
-    --secondary-foreground: 240 10% 20%;
-    --muted: 240 5% 94%;
-    --muted-foreground: 240 5% 50%;
-    --accent: 168 100% 39%;
-    --accent-foreground: 0 0% 100%;
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 240 6% 90%;
-    --input: 240 6% 90%;
-    --ring: 255 100% 65%;
-    --radius: 0.75rem;
-    --sidebar-bg: 0 0% 99%;
-    --sidebar-border: 240 6% 90%;
-    --violet-primary: #6C47FF;
-    --teal-accent: #00C9A7;
-  }
-
-  .dark {
     --background: 240 10% 6%;
-    --foreground: 0 0% 94%;
+    --foreground: 0 0% 95%;
     --card: 240 10% 9%;
-    --card-foreground: 0 0% 94%;
+    --card-foreground: 0 0% 95%;
     --popover: 240 10% 9%;
-    --popover-foreground: 0 0% 94%;
-    --primary: 255 100% 65%;
+    --popover-foreground: 0 0% 95%;
+    --primary: 252 100% 64%;
     --primary-foreground: 0 0% 100%;
+    --primary-hover: 252 84.5% 57%;
     --secondary: 240 8% 14%;
-    --secondary-foreground: 0 0% 80%;
+    --secondary-foreground: 0 0% 85%;
     --muted: 240 8% 14%;
-    --muted-foreground: 240 5% 55%;
-    --accent: 168 100% 39%;
+    --muted-foreground: 240 5% 65%;
+    --accent: 170 100% 39.4%;
     --accent-foreground: 0 0% 100%;
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
     --border: 240 8% 16%;
     --input: 240 8% 16%;
-    --ring: 255 100% 65%;
+    --ring: 252 100% 64%;
+    --radius: 0.75rem;
+    --sidebar-bg: 240 10% 7%;
+    --sidebar-border: 240 8% 14%;
+    /* Raw-hex aliases for the few places that need a colour inside an inline
+       `style` object or an SVG attribute, where a Tailwind utility cannot go. */
+    --violet-primary: #6c47ff;
+    --violet-hover: #5a35ee;
+    --teal-accent: #00c9a7;
+    --cyan-hud: #22d3ee;
+    --surface-deep: #020617;
+  }
+
+  .dark {
+    --background: 240 10% 6%;
+    --foreground: 0 0% 95%;
+    --card: 240 10% 9%;
+    --card-foreground: 0 0% 95%;
+    --popover: 240 10% 9%;
+    --popover-foreground: 0 0% 95%;
+    --primary: 252 100% 64%;
+    --primary-foreground: 0 0% 100%;
+    --primary-hover: 252 84.5% 57%;
+    --secondary: 240 8% 14%;
+    --secondary-foreground: 0 0% 85%;
+    --muted: 240 8% 14%;
+    --muted-foreground: 240 5% 65%;
+    --accent: 170 100% 39.4%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 240 8% 16%;
+    --input: 240 8% 16%;
+    --ring: 252 100% 64%;
     --sidebar-bg: 240 10% 7%;
     --sidebar-border: 240 8% 14%;
   }
@@ -61,14 +77,16 @@
   }
 
   body {
-    @apply bg-background text-foreground;
-    font-family: 'Geist', system-ui, -apple-system, sans-serif;
+    @apply bg-background text-foreground font-sans;
     font-feature-settings: 'cv11', 'ss01';
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
-  code, pre, .mono {
-    font-family: 'JetBrains Mono', monospace;
+  code,
+  pre,
+  .mono {
+    @apply font-mono;
   }
 }
 
@@ -89,6 +107,17 @@
     border-radius: 2px;
   }
 
+  /* For rows that scroll horizontally by design -- the prompt-suggestion chips --
+     where even a 4px track reads as a rendering fault rather than an affordance.
+     Scrolling still works by wheel, trackpad and drag; only the bar is hidden. */
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
   .streaming-cursor::after {
     content: '▋';
     animation: blink 1s step-end infinite;
@@ -97,12 +126,17 @@
   }
 
   @keyframes blink {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0; }
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0;
+    }
   }
 
   .gradient-violet {
-    background: linear-gradient(135deg, #6C47FF 0%, #9B7FFF 100%);
+    background: linear-gradient(135deg, var(--violet-primary) 0%, #9b7fff 100%);
   }
 
   .gradient-brand {
@@ -134,8 +168,14 @@
   }
 
   @keyframes pulseRing {
-    0% { transform: scale(0.8); opacity: 1; }
-    100% { transform: scale(2); opacity: 0; }
+    0% {
+      transform: scale(0.8);
+      opacity: 1;
+    }
+    100% {
+      transform: scale(2);
+      opacity: 0;
+    }
   }
 
   .waveform-bar {
@@ -143,8 +183,12 @@
   }
 
   @keyframes waveform {
-    from { height: 4px; }
-    to { height: 20px; }
+    from {
+      height: 4px;
+    }
+    to {
+      height: 20px;
+    }
   }
 
   /* Avatar emotion transitions */
@@ -152,58 +196,171 @@
     transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
 
-  /* Emotion glow effects */
-  .emotion-happy { filter: drop-shadow(0 0 8px rgba(0, 201, 167, 0.4)); }
-  .emotion-thinking { filter: drop-shadow(0 0 8px rgba(245, 158, 11, 0.4)); }
-  .emotion-surprised { filter: drop-shadow(0 0 8px rgba(239, 68, 68, 0.4)); }
-  .emotion-sad { filter: drop-shadow(0 0 8px rgba(107, 114, 128, 0.3)); }
-  .emotion-speaking { filter: drop-shadow(0 0 8px rgba(108, 71, 255, 0.5)); }
-
-  /* Agent step animations */
-  .agent-step-enter {
-    animation: stepSlideIn 0.2s ease-out;
+  .glow-violet {
+    box-shadow: 0 0 20px rgba(108, 71, 255, 0.3);
   }
 
-  @keyframes stepSlideIn {
-    from { opacity: 0; transform: translateX(-8px); }
-    to { opacity: 1; transform: translateX(0); }
+  .glow-teal {
+    box-shadow: 0 0 20px rgba(0, 201, 167, 0.3);
   }
 
-  /* Task completion animation */
-  .task-complete {
-    animation: taskDone 0.3s ease-out;
+  /* ── Jarvis core ────────────────────────────────────────────────────────────
+     The presence in the chat header is a holographic reactor rather than a face,
+     and it is built from real 3D transforms: each ring is a flat circle rotated
+     out of the screen plane inside one `preserve-3d` scene, so the ones on the far
+     side genuinely pass behind the core instead of being drawn to look as if they
+     do. Two consequences worth knowing before editing:
+
+       - the scene needs `perspective` on the *parent*, and nothing between the
+         parent and the rings may create a new stacking/flattening context --
+         `overflow`, `filter`, `opacity` on an intermediate wrapper all silently
+         flatten `preserve-3d` and the whole thing collapses to a flat spirograph;
+       - the glow lives in `box-shadow`, not in a `filter: blur()` wrapper, for
+         exactly that reason.
+
+     Every animation here is `transform`/`opacity` only, so the whole assembly
+     stays on the compositor and costs no layout. */
+  @keyframes jarvisSpin {
+    from {
+      transform: rotate3d(var(--jx, 1), var(--jy, 0), var(--jz, 0), var(--jtilt, 70deg))
+        rotateZ(0deg);
+    }
+    to {
+      transform: rotate3d(var(--jx, 1), var(--jy, 0), var(--jz, 0), var(--jtilt, 70deg))
+        rotateZ(360deg);
+    }
   }
 
-  @keyframes taskDone {
-    0% { transform: scale(1); }
-    50% { transform: scale(1.05); }
-    100% { transform: scale(1); }
+  @keyframes jarvisSpinReverse {
+    from {
+      transform: rotate3d(var(--jx, 1), var(--jy, 0), var(--jz, 0), var(--jtilt, 70deg))
+        rotateZ(360deg);
+    }
+    to {
+      transform: rotate3d(var(--jx, 1), var(--jy, 0), var(--jz, 0), var(--jtilt, 70deg))
+        rotateZ(0deg);
+    }
   }
 
-  /* Typing indicator */
-  .typing-dot {
-    animation: typingBounce 1.2s ease-in-out infinite;
+  /* The scene's own slow drift. Without it the rings spin but the object does not
+     sit in space -- a fixed viewpoint reads as a 2D animation of a 3D drawing. */
+  @keyframes jarvisDrift {
+    0%,
+    100% {
+      transform: rotateX(6deg) rotateY(-14deg);
+    }
+    50% {
+      transform: rotateX(-4deg) rotateY(14deg);
+    }
   }
 
-  @keyframes typingBounce {
-    0%, 60%, 100% { transform: translateY(0); }
-    30% { transform: translateY(-6px); }
+  /* Breathing, for the idle state. Scale only: a core that is perfectly still
+     looks switched off, and opacity alone looks like a flicker. */
+  @keyframes jarvisBreathe {
+    0%,
+    100% {
+      transform: scale(1);
+      opacity: 0.85;
+    }
+    50% {
+      transform: scale(1.06);
+      opacity: 1;
+    }
   }
 
-  .animate-progress-bar {
-    animation: progressBar 2s infinite linear;
+  /* Emitted shell for listening/speaking. Starts at the core's edge so it reads as
+     energy leaving the object rather than a ring appearing around it. */
+  @keyframes jarvisEmit {
+    0% {
+      transform: scale(0.55);
+      opacity: 0.55;
+    }
+    100% {
+      transform: scale(1.9);
+      opacity: 0;
+    }
   }
 
-  @keyframes progressBar {
-    0% { transform: scaleX(0); }
-    50% { transform: scaleX(0.7); }
-    100% { transform: scaleX(1); }
+  @keyframes jarvisScan {
+    0% {
+      transform: translateY(-130%);
+      opacity: 0;
+    }
+    12%,
+    88% {
+      opacity: 0.7;
+    }
+    100% {
+      transform: translateY(130%);
+      opacity: 0;
+    }
   }
-}
 
-@layer base {
-  button:active, a:active {
-    transform: scale(0.96);
-    transition: transform 0.1s ease;
+  /* Orbiting motes: one shared keyframe, per-mote radius and phase set inline. */
+  @keyframes jarvisOrbit {
+    from {
+      transform: rotateZ(var(--phase, 0deg)) translateX(var(--radius, 40px))
+        rotateZ(calc(-1 * var(--phase, 0deg)));
+    }
+    to {
+      transform: rotateZ(calc(var(--phase, 0deg) + 360deg)) translateX(var(--radius, 40px))
+        rotateZ(calc(-1 * (var(--phase, 0deg) + 360deg)));
+    }
+  }
+
+  .jarvis-scene {
+    transform-style: preserve-3d;
+    animation: jarvisDrift 14s ease-in-out infinite;
+  }
+
+  .jarvis-ring {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    transform-style: preserve-3d;
+    animation-name: jarvisSpin;
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
+    will-change: transform;
+  }
+
+  /* Motion sickness is a real accessibility failure and this component is a lot of
+     motion. Reduced-motion keeps the object -- the shape is information -- and
+     stops it moving. */
+  @media (prefers-reduced-motion: reduce) {
+    .jarvis-scene,
+    .jarvis-ring,
+    .jarvis-scene *,
+    .jarvis-ring * {
+      animation: none !important;
+    }
+
+    /* Keeping the shape takes these three rules, and without them the paragraph
+       above is simply untrue -- which is how this was shipped and then caught by
+       reading the computed styles in a browser that reports reduced-motion: every
+       `.jarvis-ring` had `transform: none`.
+
+       The reason is that the tilt lives *inside* `jarvisSpin` (a CSS animation
+       replaces the whole `transform` property, so the tilt cannot sit on the element
+       and the spin cannot be composed onto it). Cancel the animation and the tilt
+       goes with it: four rings collapse into flat concentric circles and the object
+       stops being three-dimensional at all. The motes are the same story with
+       `translateX(var(--radius))` -- cancel `jarvisOrbit` and all five pile up in
+       the middle, on top of the core.
+
+       So each of these restores exactly the first frame of the animation it
+       replaces. The result is the object, still in space, holding a pose. */
+    .jarvis-scene {
+      transform: rotateX(6deg) rotateY(-14deg);
+    }
+
+    .jarvis-ring {
+      transform: rotate3d(var(--jx, 1), var(--jy, 0), var(--jz, 0), var(--jtilt, 70deg));
+    }
+
+    .jarvis-mote {
+      transform: rotateZ(var(--phase, 0deg)) translateX(var(--radius, 40px))
+        rotateZ(calc(-1 * var(--phase, 0deg)));
+    }
   }
 }

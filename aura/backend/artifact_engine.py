@@ -22,8 +22,11 @@ except Exception:  # pragma: no cover - optional runtime dependency
 
 try:
     from pptx import Presentation
+    from pptx.util import Inches, Pt
 except Exception:  # pragma: no cover - optional runtime dependency
     Presentation = None
+    Inches = None
+    Pt = None
 
 
 GENERATED_ARTIFACTS_DIR = Path(__file__).resolve().parents[1] / "generated_artifacts"
@@ -66,13 +69,14 @@ JAVA_CODING_QUESTIONS = [
 def requested_artifact_formats(prompt: str) -> list[str]:
     lowered = prompt.lower()
     if re.search(r"\b(all\s+(?:file\s+)?formats?|all\s+types\s+of\s+(?:files?|documents?|formats?))\b", lowered):
-        return ["pdf", "docx", "pptx", "xlsx", "csv", "json", "png", "jpg", "md", "zip"]
+        return ["pdf", "docx", "pptx", "xlsx", "csv", "json", "png", "jpg", "html", "md", "zip"]
     formats: list[str] = []
     checks = [
         ("xlsx", r"\b(excel|xlsx|spreadsheets?|workbooks?)\b"),
         ("pdf", r"\b(pdfs?|reports?|invoices?|receipts?|certificates?|resume|resumes|notes?|formula sheets?|study plans?)\b"),
         ("docx", r"\b(word|docx|documents?)\b"),
         ("pptx", r"\b(powerpoints?|ppt|pptx|presentations?|slides?)\b"),
+        ("html", r"\b(dashboards?|visual dashboards?|html reports?|interactive reports?)\b"),
         ("csv", r"\b(csvs?|csv files?)\b"),
         ("json", r"\b(json)\b"),
         ("png", r"\b(pngs?|images?|diagrams?|photos?|pictures?|charts?)\b"),
@@ -265,6 +269,36 @@ def _rows_from_response(response_text: str) -> list[list[str]]:
     return rows if len(rows) > 1 else [["Content"], [_strip_markdown(response_text)]]
 
 
+def _document_title(prompt: str, response_text: str, fallback: str = "Akansha Output") -> str:
+    for line in response_text.splitlines():
+        cleaned = line.strip()
+        if cleaned.startswith("#"):
+            title = cleaned.lstrip("#").strip()
+            if title:
+                return title[:90]
+    prompt_words = re.findall(r"[A-Za-z0-9][A-Za-z0-9& -]{1,}", prompt)
+    if prompt_words:
+        return " ".join(prompt_words[:8]).strip()[:90] or fallback
+    return fallback
+
+
+def _looks_numeric(value: str) -> bool:
+    return bool(re.fullmatch(r"-?\d+(?:,\d{3})*(?:\.\d+)?%?", str(value).strip()))
+
+
+def _xlsx_cell_value(value: str, cell_ref: str, style: int) -> str:
+    text = str(value).strip()
+    if _looks_numeric(text):
+        number = text.replace(",", "").rstrip("%")
+        if text.endswith("%"):
+            try:
+                number = str(float(number) / 100)
+            except ValueError:
+                number = text
+        return f'<c r="{cell_ref}" s="{style}" t="n"><v>{_xml_escape(number)}</v></c>'
+    return f'<c r="{cell_ref}" s="{style}" t="inlineStr"><is><t>{_xml_escape(text)}</t></is></c>'
+
+
 def _write_csv(path: Path, response_text: str) -> None:
     with path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.writer(handle)
@@ -277,6 +311,13 @@ def _xml_escape(value: str) -> str:
 
 def _write_xlsx(path: Path, response_text: str) -> None:
     rows = _rows_from_response(response_text)
+    max_columns = max((len(row) for row in rows), default=1)
+    last_column = ""
+    current = max_columns
+    while current:
+        current, remainder = divmod(current - 1, 26)
+        last_column = chr(65 + remainder) + last_column
+    auto_filter_ref = f"A1:{last_column}{len(rows)}"
     sheet_rows = []
     for row_index, row in enumerate(rows, start=1):
         cells = []
@@ -287,9 +328,8 @@ def _write_xlsx(path: Path, response_text: str) -> None:
                 current, remainder = divmod(current - 1, 26)
                 column_name = chr(65 + remainder) + column_name
             cell_ref = f"{column_name}{row_index}"
-            cells.append(
-                f'<c r="{cell_ref}" t="inlineStr"><is><t>{_xml_escape(str(value))}</t></is></c>'
-            )
+            style = 1 if row_index == 1 else 2 if _looks_numeric(str(value)) else 0
+            cells.append(_xlsx_cell_value(str(value), cell_ref, style))
         sheet_rows.append(f'<row r="{row_index}">{"".join(cells)}</row>')
 
     with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
@@ -301,6 +341,7 @@ def _write_xlsx(path: Path, response_text: str) -> None:
 <Default Extension="xml" ContentType="application/xml"/>
 <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
 <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
 </Types>""",
         )
         archive.writestr(
@@ -322,13 +363,28 @@ def _write_xlsx(path: Path, response_text: str) -> None:
             """<?xml version="1.0" encoding="UTF-8"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
 <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
 </Relationships>""",
+        )
+        archive.writestr(
+            "xl/styles.xml",
+            """<?xml version="1.0" encoding="UTF-8"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><color rgb="FFFFFFFF"/><sz val="11"/><name val="Calibri"/></font></fonts>
+<fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF5B3FFF"/><bgColor indexed="64"/></patternFill></fill></fills>
+<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>
+<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+<cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/><xf numFmtId="4" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/></cellXfs>
+</styleSheet>""",
         )
         archive.writestr(
             "xl/worksheets/sheet1.xml",
             f"""<?xml version="1.0" encoding="UTF-8"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>
+<cols>{"".join(f'<col min="{idx}" max="{idx}" width="22" customWidth="1"/>' for idx in range(1, max_columns + 1))}</cols>
 <sheetData>{"".join(sheet_rows)}</sheetData>
+<autoFilter ref="{auto_filter_ref}"/>
 </worksheet>""",
         )
 
@@ -338,21 +394,34 @@ def _write_pdf(path: Path, response_text: str, prompt: str = "") -> None:
         path.write_text(_strip_markdown(response_text), encoding="utf-8")
         return
     min_pages = _requested_count(prompt, ("pages?",)) or 1
+    title = _document_title(prompt, response_text, "Akansha Report")
     document = fitz.open()
     page = document.new_page(width=595, height=842)
     page_count = 1
     y = 54
-    page.insert_text((48, y), "Akansha Report", fontsize=18, fontname="helv", color=(0.18, 0.12, 0.42))
-    y += 34
+    page.insert_text((48, y), title, fontsize=19, fontname="helv", color=(0.18, 0.12, 0.42))
+    page.insert_text((48, y + 24), datetime.now().strftime("Generated %d %b %Y, %I:%M %p"), fontsize=8, fontname="helv", color=(0.38, 0.38, 0.46))
+    page.draw_line((48, y + 40), (547, y + 40), color=(0.76, 0.72, 0.92), width=0.8)
+    y += 64
     for paragraph in _strip_markdown(response_text).splitlines():
-        for wrapped in textwrap.wrap(paragraph, width=88) or [""]:
+        stripped = paragraph.strip()
+        is_heading = bool(stripped) and (paragraph.lstrip().startswith("#") or re.match(r"^[A-Z][A-Za-z0-9 ,/&-]{2,80}:$", stripped))
+        text = stripped.lstrip("#").strip() if paragraph.lstrip().startswith("#") else stripped
+        font_size = 13 if is_heading else 10
+        color = (0.18, 0.12, 0.42) if is_heading else (0.08, 0.08, 0.11)
+        wrap_width = 70 if is_heading else 88
+        for wrapped in textwrap.wrap(text, width=wrap_width) or [""]:
             if y > 790:
+                page.insert_text((48, 820), f"Page {page_count}", fontsize=8, fontname="helv", color=(0.45, 0.45, 0.5))
                 page = document.new_page(width=595, height=842)
                 page_count += 1
                 y = 54
-            page.insert_text((48, y), wrapped, fontsize=10, fontname="helv")
-            y += 16
+            page.insert_text((48, y), wrapped, fontsize=font_size, fontname="helv", color=color)
+            y += 18 if is_heading else 16
+        if is_heading:
+            y += 5
     while page_count < min_pages:
+        page.insert_text((48, 820), f"Page {page_count}", fontsize=8, fontname="helv", color=(0.45, 0.45, 0.5))
         page = document.new_page(width=595, height=842)
         page_count += 1
         page.insert_text((48, 54), f"Practice Page {page_count}", fontsize=16, fontname="helv", color=(0.18, 0.12, 0.42))
@@ -368,6 +437,8 @@ def _write_pdf(path: Path, response_text: str, prompt: str = "") -> None:
         ]:
             page.insert_text((48, y), line, fontsize=11, fontname="helv")
             y += 28
+    page.insert_text((48, 820), f"Page {page_count}", fontsize=8, fontname="helv", color=(0.45, 0.45, 0.5))
+    document.set_metadata({"title": title, "author": "Akansha", "subject": _strip_markdown(prompt)[:180]})
     document.save(path)
     document.close()
 
@@ -409,19 +480,45 @@ def _write_pptx(path: Path, response_text: str) -> None:
         path.write_text(_strip_markdown(response_text), encoding="utf-8")
         return
     presentation = Presentation()
+    presentation.core_properties.author = "Akansha"
+    title = _document_title("presentation", response_text, "Akansha Report")
     title_slide = presentation.slides.add_slide(presentation.slide_layouts[0])
-    title_slide.shapes.title.text = "Akansha Report"
+    title_slide.shapes.title.text = title
     title_slide.placeholders[1].text = datetime.now().strftime("%d %b %Y, %I:%M %p")
-    lines = [line.strip(" -") for line in _strip_markdown(response_text).splitlines() if line.strip()]
-    for chunk_start in range(0, len(lines), 7):
+    clean_lines = [line.strip() for line in _strip_markdown(response_text).splitlines() if line.strip()]
+    sections: list[tuple[str, list[str]]] = []
+    current_title = "Key points"
+    current_items: list[str] = []
+    for line in clean_lines:
+        if line.startswith("#") or re.match(r"^[A-Z][A-Za-z0-9 ,/&-]{2,80}:$", line):
+            if current_items:
+                sections.append((current_title, current_items))
+            current_title = line.lstrip("#").rstrip(":").strip()[:70] or "Key points"
+            current_items = []
+        else:
+            current_items.append(line.strip(" -")[:180])
+    if current_items:
+        sections.append((current_title, current_items))
+    if not sections:
+        sections = [("Key points", clean_lines[:7] or ["Generated by Akansha"])]
+    for section_title, items in sections:
+        for chunk_start in range(0, len(items), 6):
+            slide = presentation.slides.add_slide(presentation.slide_layouts[1])
+            slide.shapes.title.text = section_title
+            body = slide.placeholders[1].text_frame
+            body.clear()
+            for line in items[chunk_start : chunk_start + 6]:
+                paragraph = body.add_paragraph()
+                paragraph.text = line[:180]
+                paragraph.level = 0
+                if Pt is not None:
+                    paragraph.font.size = Pt(20)
+    if len(presentation.slides) == 1:
         slide = presentation.slides.add_slide(presentation.slide_layouts[1])
         slide.shapes.title.text = "Key points"
         body = slide.placeholders[1].text_frame
         body.clear()
-        for line in lines[chunk_start : chunk_start + 7]:
-            paragraph = body.add_paragraph()
-            paragraph.text = line[:180]
-            paragraph.level = 0
+        body.text = "Generated by Akansha"
     presentation.save(path)
 
 
@@ -444,6 +541,79 @@ def _write_image(path: Path, response_text: str, image_format: str) -> None:
             draw.text((52, y), wrapped, fill="#f4f0ff", font=font_body)
             y += 24
     image.save(path, "JPEG" if image_format == "jpg" else "PNG", quality=94)
+
+
+def _write_html_dashboard(path: Path, response_text: str, prompt: str = "") -> None:
+    rows = _rows_from_response(response_text)
+    headers = rows[0] if rows else ["Metric", "Value"]
+    data_rows = rows[1:] if len(rows) > 1 else []
+    title = _document_title(prompt, response_text, "Akansha Dashboard")
+    cards = []
+    for row in data_rows[:4]:
+        label = row[0] if row else "Metric"
+        value = row[1] if len(row) > 1 else row[0] if row else ""
+        cards.append(
+            f"""
+            <article class="card">
+              <span>{_xml_escape(str(label))}</span>
+              <strong>{_xml_escape(str(value))}</strong>
+            </article>
+            """
+        )
+    if not cards:
+        cards.append('<article class="card"><span>Status</span><strong>Generated</strong></article>')
+    table_header = "".join(f"<th>{_xml_escape(str(header))}</th>" for header in headers)
+    table_body = "\n".join(
+        "<tr>" + "".join(f"<td>{_xml_escape(str(cell))}</td>" for cell in row) + "</tr>"
+        for row in data_rows[:80]
+    )
+    summary = _xml_escape(_strip_markdown(response_text)[:900])
+    path.write_text(
+        f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{_xml_escape(title)}</title>
+  <style>
+    :root {{ color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }}
+    body {{ margin: 0; background: #080914; color: #f8f7ff; }}
+    main {{ max-width: 1120px; margin: 0 auto; padding: 40px 24px 56px; }}
+    header {{ border-bottom: 1px solid rgba(255,255,255,.12); padding-bottom: 22px; margin-bottom: 24px; }}
+    h1 {{ margin: 0; font-size: 32px; letter-spacing: 0; }}
+    .sub {{ color: #b8b2d8; margin-top: 8px; }}
+    .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; margin: 24px 0; }}
+    .card {{ border: 1px solid rgba(255,255,255,.12); background: linear-gradient(180deg, #17142d, #100f1d); border-radius: 10px; padding: 18px; }}
+    .card span {{ display: block; color: #b8b2d8; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }}
+    .card strong {{ display: block; margin-top: 10px; font-size: 24px; }}
+    section {{ margin-top: 24px; }}
+    table {{ width: 100%; border-collapse: collapse; overflow: hidden; border-radius: 10px; }}
+    th, td {{ border-bottom: 1px solid rgba(255,255,255,.1); padding: 12px 14px; text-align: left; vertical-align: top; }}
+    th {{ background: #5b3fff; color: white; }}
+    tr:nth-child(even) td {{ background: rgba(255,255,255,.035); }}
+    .summary {{ white-space: pre-wrap; line-height: 1.65; color: #e9e5ff; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.1); border-radius: 10px; padding: 16px; }}
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>{_xml_escape(title)}</h1>
+      <p class="sub">Generated by Akansha on {datetime.now().strftime("%d %b %Y, %I:%M %p")}</p>
+    </header>
+    <div class="grid">{"".join(cards)}</div>
+    <section>
+      <h2>Data Table</h2>
+      <table><thead><tr>{table_header}</tr></thead><tbody>{table_body}</tbody></table>
+    </section>
+    <section>
+      <h2>Summary</h2>
+      <div class="summary">{summary}</div>
+    </section>
+  </main>
+</body>
+</html>""",
+        encoding="utf-8",
+    )
 
 
 def create_requested_artifacts(prompt: str, response_text: str) -> list[dict[str, str]]:
@@ -479,6 +649,8 @@ def create_requested_artifacts(prompt: str, response_text: str) -> list[dict[str
             path.write_text(artifact_content, encoding="utf-8")
         elif fmt in {"png", "jpg"}:
             _write_image(path, artifact_content, fmt)
+        elif fmt == "html":
+            _write_html_dashboard(path, artifact_content, prompt)
         else:
             continue
         generated_paths.append(path)

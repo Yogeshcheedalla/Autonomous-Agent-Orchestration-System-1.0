@@ -66,11 +66,40 @@ from .ui.adaptive_ui import AdaptiveUIEngine
 from .twin import CognitiveDigitalTwinEngine, FutureSimulationEngine, PredictiveRecommendationEngine
 from .workflows.workflow_generator import WorkflowGenerator
 from .world.world_model import WorldModelEngine
+from ..agent_modules import (
+    AkanshaSystemPromptBuilder,
+    BrowserAutomationModule,
+    DesktopAutomationModule,
+    MemoryModule,
+    ReasoningEngine,
+    TaskSchedulerModule,
+    ThinkingEngine,
+    ToolOrchestrator,
+    UserUnderstandingModule,
+)
 
 
 class HermesCognitiveOS:
     def __init__(self, store: CognitiveStore | None = None) -> None:
         self.store = store or get_cognitive_store()
+        self.thinking_engine = ThinkingEngine()
+        self.reasoning_engine = ReasoningEngine()
+        self.user_understanding = UserUnderstandingModule()
+        self.memory_module = MemoryModule()
+        self.tool_orchestrator = ToolOrchestrator()
+        self.browser_automation = BrowserAutomationModule()
+        self.desktop_automation = DesktopAutomationModule()
+        self.task_scheduler = TaskSchedulerModule()
+        self.prompt_builder = AkanshaSystemPromptBuilder(
+            thinking_engine=self.thinking_engine,
+            reasoning_engine=self.reasoning_engine,
+            user_understanding=self.user_understanding,
+            memory_module=self.memory_module,
+            tool_orchestrator=self.tool_orchestrator,
+            browser_automation=self.browser_automation,
+            desktop_automation=self.desktop_automation,
+            task_scheduler=self.task_scheduler,
+        )
         self.short_term = ShortTermMemory(self.store)
         self.long_term = LongTermMemory(self.store)
         self.retrieval = MemoryRetrievalEngine(self.store)

@@ -39,7 +39,8 @@ export const SLASH_COMMANDS: SlashCommandDefinition[] = [
     name: 'brief',
     category: 'Admin',
     description: 'Create a short executive brief.',
-    template: 'Create a concise executive brief with context, current status, blockers, and next steps:\n{input}',
+    template:
+      'Create a concise executive brief with context, current status, blockers, and next steps:\n{input}',
   },
   {
     name: 'admin-report',
@@ -53,43 +54,50 @@ export const SLASH_COMMANDS: SlashCommandDefinition[] = [
     name: 'status',
     category: 'Admin',
     description: 'Turn notes into a crisp progress update.',
-    template: 'Turn this into a professional progress update with done, doing, blocked, and next sections:\n{input}',
+    template:
+      'Turn this into a professional progress update with done, doing, blocked, and next sections:\n{input}',
   },
   {
     name: 'policy',
     category: 'Admin',
     description: 'Draft a policy, rule, or governance note.',
-    template: 'Draft a clear policy with purpose, scope, rules, exceptions, and enforcement steps:\n{input}',
+    template:
+      'Draft a clear policy with purpose, scope, rules, exceptions, and enforcement steps:\n{input}',
   },
   {
     name: 'sop',
     category: 'Admin',
     description: 'Create a standard operating procedure.',
-    template: 'Create a standard operating procedure with prerequisites, steps, checks, and escalation path:\n{input}',
+    template:
+      'Create a standard operating procedure with prerequisites, steps, checks, and escalation path:\n{input}',
   },
   {
     name: 'meeting',
     category: 'Admin',
     description: 'Create a meeting agenda.',
-    template: 'Create a meeting agenda with objective, attendees, topics, questions, and expected decisions:\n{input}',
+    template:
+      'Create a meeting agenda with objective, attendees, topics, questions, and expected decisions:\n{input}',
   },
   {
     name: 'minutes',
     category: 'Admin',
     description: 'Convert notes into meeting minutes.',
-    template: 'Convert these notes into meeting minutes with decisions, action items, owners, and deadlines:\n{input}',
+    template:
+      'Convert these notes into meeting minutes with decisions, action items, owners, and deadlines:\n{input}',
   },
   {
     name: 'decision',
     category: 'Admin',
     description: 'Write a decision memo.',
-    template: 'Write a decision memo with background, options, recommendation, tradeoffs, and final decision:\n{input}',
+    template:
+      'Write a decision memo with background, options, recommendation, tradeoffs, and final decision:\n{input}',
   },
   {
     name: 'risk',
     category: 'Admin',
     description: 'Create a risk register.',
-    template: 'Create a risk register with risk, likelihood, impact, mitigation, owner, and review date:\n{input}',
+    template:
+      'Create a risk register with risk, likelihood, impact, mitigation, owner, and review date:\n{input}',
   },
   {
     name: 'twin',
@@ -124,7 +132,8 @@ export const SLASH_COMMANDS: SlashCommandDefinition[] = [
     name: 'audit',
     category: 'Admin',
     description: 'Audit content or a workflow for gaps.',
-    template: 'Audit this for bugs, missing requirements, risks, compliance gaps, and practical fixes:\n{input}',
+    template:
+      'Audit this for bugs, missing requirements, risks, compliance gaps, and practical fixes:\n{input}',
   },
   {
     name: 'todo',
@@ -154,7 +163,8 @@ export const SLASH_COMMANDS: SlashCommandDefinition[] = [
     name: 'forget',
     category: 'Memory',
     description: 'Remove or ignore a memory.',
-    template: 'Find and remove this memory if it exists. If removal is not possible, explain what should be forgotten:\n{input}',
+    template:
+      'Find and remove this memory if it exists. If removal is not possible, explain what should be forgotten:\n{input}',
   },
   {
     name: 'history',
@@ -172,19 +182,22 @@ export const SLASH_COMMANDS: SlashCommandDefinition[] = [
     name: 'reply',
     category: 'Writing',
     description: 'Suggest replies in different tones.',
-    template: 'Suggest three reply options: friendly, professional, and short. Include emojis only if appropriate:\n{input}',
+    template:
+      'Suggest three reply options: friendly, professional, and short. Include emojis only if appropriate:\n{input}',
   },
   {
     name: 'translate',
     category: 'Language',
     description: 'Translate while preserving tone.',
-    template: 'Translate this while preserving meaning and tone. If no target language is given, ask once:\n{input}',
+    template:
+      'Translate this while preserving meaning and tone. If no target language is given, ask once:\n{input}',
   },
   {
     name: 'telugu',
     category: 'Language',
     description: 'Respond in Telugu plus English where useful.',
-    template: 'Respond in natural Telugu plus English where helpful. Keep it clear and conversational:\n{input}',
+    template:
+      'Respond in natural Telugu plus English where helpful. Keep it clear and conversational:\n{input}',
   },
   {
     name: 'hindi',
@@ -202,13 +215,15 @@ export const SLASH_COMMANDS: SlashCommandDefinition[] = [
     name: 'code-review',
     category: 'Coding',
     description: 'Review code for bugs and regressions.',
-    template: 'Review this code for bugs, regressions, security issues, and missing tests. Lead with findings:\n{input}',
+    template:
+      'Review this code for bugs, regressions, security issues, and missing tests. Lead with findings:\n{input}',
   },
   {
     name: 'test-plan',
     category: 'Coding',
     description: 'Create a focused test plan.',
-    template: 'Create a focused test plan with critical cases, edge cases, negative cases, and smoke checks:\n{input}',
+    template:
+      'Create a focused test plan with critical cases, edge cases, negative cases, and smoke checks:\n{input}',
   },
   {
     name: 'browser',
@@ -235,6 +250,28 @@ export const SLASH_COMMANDS: SlashCommandDefinition[] = [
     description: 'Force Akansha to open something as a website in the browser.',
     template: 'Open {input} in the web browser.',
     aliases: ['site'],
+  },
+  {
+    name: 'automations',
+    category: 'Automation',
+    description: 'List active task automations, schedules, and recent execution logs.',
+    template:
+      'List all active task automations, background schedules, and recent execution audit logs.',
+    aliases: ['task-automations', 'canvas-automations'],
+  },
+  {
+    name: 'automate',
+    category: 'Automation',
+    description: 'Create a scheduled or webhook task automation.',
+    template: 'Create a task automation for: {input}',
+    aliases: ['schedule-task', 'task-studio'],
+  },
+  {
+    name: 'run-automation',
+    category: 'Automation',
+    description: 'Trigger an immediate execution of a task automation.',
+    template: 'Trigger immediate execution of task automation: {input}',
+    aliases: ['trigger-automation', 'exec-automation'],
   },
   {
     name: 'open',
@@ -295,18 +332,22 @@ export function expandSlashCommand(value: string) {
       acc[command.category].push(`/${command.name} - ${command.description}`);
       return acc;
     }, {});
-    return `Show this Akansha slash-command help in a compact grouped list:\n${Object.entries(grouped)
+    return `Show this Akansha slash-command help in a compact grouped list:\n${Object.entries(
+      grouped
+    )
       .map(([category, commands]) => `${category}\n${commands.join('\n')}`)
       .join('\n\n')}`;
   }
 
   if (parsed.command.name === 'desktop') {
-    const appTarget = (parsed.remainder || inputFallback).replace(/^\s*open\s+/i, '').trim() || inputFallback;
+    const appTarget =
+      (parsed.remainder || inputFallback).replace(/^\s*open\s+/i, '').trim() || inputFallback;
     return `Open ${appTarget} in the desktop app.`;
   }
 
   if (parsed.command.name === 'web' || parsed.command.name === 'website') {
-    const webTarget = (parsed.remainder || inputFallback).replace(/^\s*open\s+/i, '').trim() || inputFallback;
+    const webTarget =
+      (parsed.remainder || inputFallback).replace(/^\s*open\s+/i, '').trim() || inputFallback;
     return `Open ${webTarget} in the web browser.`;
   }
 
@@ -339,7 +380,9 @@ export function autoRouteCognitivePrompt(value: string) {
   ];
   const looksLikeLargeGoal =
     trimmed.length > 420 &&
-    /(goal|plan|project|startup|future|risk|milestone|deadline|decision|simulate|predict)/i.test(trimmed);
+    /(goal|plan|project|startup|future|risk|milestone|deadline|decision|simulate|predict)/i.test(
+      trimmed
+    );
 
   if (!looksLikeLargeGoal && !cognitiveSignals.some((signal) => normalized.includes(signal))) {
     return value;

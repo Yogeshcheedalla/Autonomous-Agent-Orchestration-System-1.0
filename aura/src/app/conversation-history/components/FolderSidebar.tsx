@@ -1,7 +1,16 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Folder, FolderOpen, Star, Archive, Share2, Plus, MessageSquare, Trash2 } from 'lucide-react';
+import {
+  Folder,
+  FolderOpen,
+  Star,
+  Archive,
+  Share2,
+  Plus,
+  MessageSquare,
+  Trash2,
+} from 'lucide-react';
 import type { Conversation } from './ConversationHistoryScreen';
 import type { ConversationFolder } from '@/lib/chatHistoryMetadata';
 import { toast } from 'sonner';
@@ -35,10 +44,10 @@ export default function FolderSidebar({
 
   const getCount = (key: string) => {
     if (key === 'all') return conversations.length;
-    if (key === 'starred') return conversations.filter(c => c.starred).length;
-    if (key === 'shared') return conversations.filter(c => c.shared).length;
-    if (key === 'archived') return conversations.filter(c => c.status === 'archived').length;
-    return conversations.filter(c => c.folderId === key).length;
+    if (key === 'starred') return conversations.filter((c) => c.starred).length;
+    if (key === 'shared') return conversations.filter((c) => c.shared).length;
+    if (key === 'archived') return conversations.filter((c) => c.status === 'archived').length;
+    return conversations.filter((c) => c.folderId === key).length;
   };
 
   const handleCreateFolder = () => {
@@ -58,7 +67,9 @@ export default function FolderSidebar({
   return (
     <div className="flex flex-col h-full">
       <div className="px-3 py-3 border-b border-border">
-        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Library</p>
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+          Library
+        </p>
       </div>
 
       <div className="flex-1 overflow-y-auto scrollbar-thin p-2">
@@ -73,13 +84,15 @@ export default function FolderSidebar({
                 onClick={() => onSelectFolder(key === 'all' ? null : key)}
                 className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm transition-colors mb-0.5 ${
                   isActive
-                    ? 'bg-[#6C47FF]/10 text-[#6C47FF] dark:text-[#9B7FFF]'
+                    ? 'bg-primary/10 text-primary dark:text-[#9B7FFF]'
                     : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                 }`}
               >
                 <Icon size={15} className="shrink-0" />
                 <span className="flex-1 text-left text-xs font-medium">{label}</span>
-                <span className="text-xs font-mono tabular-nums text-muted-foreground/60">{count}</span>
+                <span className="text-xs font-mono tabular-nums text-muted-foreground/60">
+                  {count}
+                </span>
               </button>
             );
           })}
@@ -88,7 +101,9 @@ export default function FolderSidebar({
         {/* User folders */}
         <div>
           <div className="flex items-center justify-between px-2.5 mb-1">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Folders</p>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Folders
+            </p>
             <button
               onClick={() => setNewFolderMode(true)}
               className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
@@ -98,7 +113,7 @@ export default function FolderSidebar({
             </button>
           </div>
 
-          {folders.map(folder => {
+          {folders.map((folder) => {
             const count = getCount(folder.id);
             const isActive = selectedFolder === folder.id;
             return (
@@ -107,13 +122,19 @@ export default function FolderSidebar({
                 onClick={() => onSelectFolder(folder.id)}
                 className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm transition-colors mb-0.5 group ${
                   isActive
-                    ? 'bg-[#6C47FF]/10 text-[#6C47FF] dark:text-[#9B7FFF]'
+                    ? 'bg-primary/10 text-primary dark:text-[#9B7FFF]'
                     : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                 }`}
               >
-                {isActive ? <FolderOpen size={15} className="shrink-0" /> : <Folder size={15} className="shrink-0" />}
+                {isActive ? (
+                  <FolderOpen size={15} className="shrink-0" />
+                ) : (
+                  <Folder size={15} className="shrink-0" />
+                )}
                 <span className="flex-1 text-left text-xs font-medium">{folder.name}</span>
-                <span className="text-xs font-mono tabular-nums text-muted-foreground/60">{count}</span>
+                <span className="text-xs font-mono tabular-nums text-muted-foreground/60">
+                  {count}
+                </span>
               </button>
             );
           })}
@@ -125,16 +146,25 @@ export default function FolderSidebar({
                 type="text"
                 autoFocus
                 value={newFolderName}
-                onChange={e => setNewFolderName(e.target.value)}
-                onKeyDown={e => {
+                onChange={(e) => setNewFolderName(e.target.value)}
+                onKeyDown={(e) => {
                   if (e.key === 'Enter') handleCreateFolder();
-                  if (e.key === 'Escape') { setNewFolderMode(false); setNewFolderName(''); }
+                  if (e.key === 'Escape') {
+                    setNewFolderMode(false);
+                    setNewFolderName('');
+                  }
                 }}
-                onBlur={() => { if (!newFolderName.trim()) { setNewFolderMode(false); } }}
+                onBlur={() => {
+                  if (!newFolderName.trim()) {
+                    setNewFolderMode(false);
+                  }
+                }}
                 placeholder="Folder name..."
-                className="w-full bg-muted rounded-lg text-xs px-2.5 py-1.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-[#6C47FF]/40 border-0"
+                className="w-full bg-muted rounded-lg text-xs px-2.5 py-1.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 border-0"
               />
-              <p className="text-xs text-muted-foreground/60 mt-1 px-0.5">Enter to create, Esc to cancel</p>
+              <p className="text-xs text-muted-foreground/60 mt-1 px-0.5">
+                Enter to create, Esc to cancel
+              </p>
             </div>
           )}
         </div>

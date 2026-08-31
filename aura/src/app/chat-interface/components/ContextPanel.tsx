@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { memo, useState } from 'react';
 import {
   Brain,
   FileText,
@@ -19,6 +19,8 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import TaskCalendarPanel from './TaskCalendarPanel';
+import { apiUrl } from '@/lib/apiBase';
+import type { MemoriesResponse } from '@/types/chatApi';
 
 interface ContextPanelProps {
   onClose: () => void;
@@ -40,23 +42,28 @@ interface MemoryItem {
   pinned: boolean;
 }
 
-export default function ContextPanel({
-  onClose,
-  messageCount = 0,
-  contextUnits = 0,
-}: ContextPanelProps) {
+/**
+ * Memoized at the bottom of this file. Partial win, deliberately.
+ *
+ * `messageCount` and `contextUnits` genuinely change while a reply streams, so
+ * the wrapper cannot stop re-renders during a reply -- it stops them the rest of
+ * the time, when the parent re-renders for a reason this drawer does not care
+ * about. The large cost underneath (TaskCalendarPanel) is memoized separately and
+ * takes no props, so it stays parked even while these two numbers tick.
+ */
+function ContextPanel({ onClose, messageCount = 0, contextUnits = 0 }: ContextPanelProps) {
   const [activeTab, setActiveTab] = useState<'memory' | 'planner' | 'rag' | 'context'>('memory');
   const [memoryExpanded, setMemoryExpanded] = useState(true);
   const [memories, setMemories] = useState<MemoryItem[]>([]);
 
   React.useEffect(() => {
     const fetchMemories = () => {
-      fetch('http://localhost:8000/api/memories')
-        .then((res) => res.json())
+      fetch(apiUrl('/api/memories'))
+        .then((res) => res.json() as Promise<MemoriesResponse>)
         .then((data) => {
           if (data.memories) {
             setMemories(
-              data.memories.map((m: any) => ({
+              data.memories.map((m) => ({
                 id: m.id.toString(),
                 content: m.insight,
                 category: m.topic,
@@ -133,7 +140,7 @@ export default function ContextPanel({
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
         <div className="flex items-center gap-2">
-          <Brain size={15} className="text-[#00C9A7]" />
+          <Brain size={15} className="text-accent" />
           <span className="text-sm font-semibold text-foreground">Context</span>
         </div>
         <button
@@ -157,7 +164,7 @@ export default function ContextPanel({
             onClick={() => setActiveTab(key as typeof activeTab)}
             className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-2.5 text-xs font-medium transition-colors ${
               activeTab === key
-                ? 'text-[#6C47FF] border-b-2 border-[#6C47FF]'
+                ? 'text-primary border-b-2 border-primary'
                 : 'text-muted-foreground hover:text-foreground'
             }`}
           >
@@ -182,7 +189,7 @@ export default function ContextPanel({
                 placeholder="Search memories..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-muted rounded-lg text-xs pl-7 pr-3 py-1.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-[#6C47FF]/40 border-0"
+                className="w-full bg-muted rounded-lg text-xs pl-7 pr-3 py-1.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 border-0"
               />
             </div>
 
@@ -190,7 +197,7 @@ export default function ContextPanel({
               <p className="text-xs text-muted-foreground">{filteredMemories.length} memories</p>
               <button
                 onClick={() => setAddingMemory(true)}
-                className="flex items-center gap-1 text-xs text-[#6C47FF] hover:text-[#5A35EE] transition-colors"
+                className="flex items-center gap-1 text-xs text-primary hover:text-primary-hover transition-colors"
               >
                 <Plus size={12} />
                 Add
@@ -199,7 +206,7 @@ export default function ContextPanel({
 
             {/* Add memory form */}
             {addingMemory && (
-              <div className="p-3 rounded-xl border border-[#6C47FF]/30 bg-[#6C47FF]/5 space-y-2">
+              <div className="p-3 rounded-xl border border-primary/30 bg-primary/5 space-y-2">
                 <textarea
                   placeholder="What should Akansha remember?"
                   value={newMemoryContent}
@@ -229,7 +236,7 @@ export default function ContextPanel({
                   </select>
                   <button
                     onClick={addMemory}
-                    className="px-3 py-1 rounded-lg bg-[#6C47FF] text-white text-xs font-medium hover:bg-[#5A35EE] transition-colors"
+                    className="px-3 py-1 rounded-lg bg-primary text-white text-xs font-medium hover:bg-primary-hover transition-colors"
                   >
                     Save
                   </button>
@@ -258,9 +265,9 @@ export default function ContextPanel({
                   .map((mem) => (
                     <div
                       key={mem.id}
-                      className="group flex gap-2 p-2.5 rounded-lg bg-[#00C9A7]/5 border border-[#00C9A7]/15 mb-2"
+                      className="group flex gap-2 p-2.5 rounded-lg bg-accent/5 border border-accent/15 mb-2"
                     >
-                      <Brain size={12} className="text-[#00C9A7] shrink-0 mt-0.5" />
+                      <Brain size={12} className="text-accent shrink-0 mt-0.5" />
                       <div className="flex-1 min-w-0">
                         {editingId === mem.id ? (
                           <div className="flex gap-1">
@@ -270,7 +277,7 @@ export default function ContextPanel({
                               className="flex-1 bg-card border border-border rounded px-2 py-0.5 text-xs text-foreground focus:outline-none"
                               autoFocus
                             />
-                            <button onClick={() => saveEdit(mem.id)} className="p-1 text-[#00C9A7]">
+                            <button onClick={() => saveEdit(mem.id)} className="p-1 text-accent">
                               <Check size={11} />
                             </button>
                           </div>
@@ -278,7 +285,7 @@ export default function ContextPanel({
                           <p className="text-xs text-foreground leading-relaxed">{mem.content}</p>
                         )}
                         <div className="flex items-center gap-2 mt-1">
-                          <span className="text-xs px-1.5 py-0.5 rounded bg-[#00C9A7]/10 text-[#00C9A7] font-medium">
+                          <span className="text-xs px-1.5 py-0.5 rounded bg-accent/10 text-accent font-medium">
                             {mem.category}
                           </span>
                           <span className="text-xs text-muted-foreground flex items-center gap-1">
@@ -290,13 +297,13 @@ export default function ContextPanel({
                       <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-all">
                         <button
                           onClick={() => startEdit(mem)}
-                          className="p-1 rounded text-muted-foreground hover:text-[#6C47FF] transition-colors"
+                          className="p-1 rounded text-muted-foreground hover:text-primary transition-colors"
                         >
                           <Edit3 size={10} />
                         </button>
                         <button
                           onClick={() => togglePin(mem.id)}
-                          className="p-1 rounded text-[#00C9A7] hover:text-muted-foreground transition-colors"
+                          className="p-1 rounded text-accent hover:text-muted-foreground transition-colors"
                         >
                           <Pin size={10} />
                         </button>
@@ -333,7 +340,7 @@ export default function ContextPanel({
                             className="flex-1 bg-card border border-border rounded px-2 py-0.5 text-xs text-foreground focus:outline-none"
                             autoFocus
                           />
-                          <button onClick={() => saveEdit(mem.id)} className="p-1 text-[#00C9A7]">
+                          <button onClick={() => saveEdit(mem.id)} className="p-1 text-accent">
                             <Check size={11} />
                           </button>
                         </div>
@@ -349,13 +356,13 @@ export default function ContextPanel({
                     <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-all">
                       <button
                         onClick={() => startEdit(mem)}
-                        className="p-1 rounded text-muted-foreground hover:text-[#6C47FF] transition-colors"
+                        className="p-1 rounded text-muted-foreground hover:text-primary transition-colors"
                       >
                         <Edit3 size={10} />
                       </button>
                       <button
                         onClick={() => togglePin(mem.id)}
-                        className="p-1 rounded text-muted-foreground hover:text-[#00C9A7] transition-colors"
+                        className="p-1 rounded text-muted-foreground hover:text-accent transition-colors"
                       >
                         <Pin size={10} />
                       </button>
@@ -370,7 +377,7 @@ export default function ContextPanel({
                 ))}
               {filteredMemories.filter((m) => !m.pinned).length === 0 && searchQuery && (
                 <p className="text-xs text-muted-foreground text-center py-4">
-                  No memories match "{searchQuery}"
+                  No memories match &ldquo;{searchQuery}&rdquo;
                 </p>
               )}
             </div>
@@ -388,7 +395,7 @@ export default function ContextPanel({
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <p className="text-xs text-muted-foreground">{RAG_DOCS.length} documents</p>
-              <button className="flex items-center gap-1 text-xs text-[#6C47FF] hover:text-[#5A35EE] transition-colors">
+              <button className="flex items-center gap-1 text-xs text-primary hover:text-primary-hover transition-colors">
                 <Plus size={12} />
                 Upload
               </button>
@@ -442,7 +449,7 @@ export default function ContextPanel({
               </div>
               <div className="h-2 bg-muted rounded-full overflow-hidden">
                 <div
-                  className="h-full rounded-full bg-gradient-to-r from-[#6C47FF] to-[#00C9A7] transition-all"
+                  className="h-full rounded-full bg-gradient-to-r from-primary to-accent transition-all"
                   style={{ width: `${usagePercent}%` }}
                 />
               </div>
@@ -484,3 +491,7 @@ export default function ContextPanel({
     </div>
   );
 }
+
+ContextPanel.displayName = 'ContextPanel';
+
+export default memo(ContextPanel);

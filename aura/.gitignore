@@ -1,10 +1,19 @@
-# Aura Sub-directory Gitignore
-# Rules are primarily managed in the root .gitignore.
+# ==============================================================================
+# Akansha AI Operating System - Aura Sub-directory .gitignore
+# ==============================================================================
 
-# Dependencies
+# Node dependencies
 node_modules/
 .pnp/
 .pnp.*
+
+# Build and framework output
+.next/
+out/
+dist/
+build/
+.turbo/
+*.tsbuildinfo
 
 # Environment and local secrets
 .env
@@ -15,14 +24,7 @@ node_modules/
 *.secret
 secrets/
 private/
-
-# Build and framework output
-.next/
-out/
-dist/
-build/
-.turbo/
-*.tsbuildinfo
+.akansha/
 
 # Logs
 *.log
@@ -33,7 +35,7 @@ pnpm-debug.log*
 dev-server.log
 frontend-dev.log
 
-# Local data
+# Databases & local state
 *.db
 *.sqlite
 *.sqlite3
@@ -44,7 +46,7 @@ frontend-dev.log
 *.sqlite3-wal
 *.sqlite3-shm
 
-# Akansha / Hermes local runtime state
+# Backend runtime storage
 backend/hermes/database/*.db
 backend/hermes/database/*.db-*
 backend/hermes/database/*.sqlite*
@@ -58,6 +60,10 @@ backend/memory/
 backend/vector_store/
 backend/chroma/
 backend/faiss/
+backend/voice_models/
+*.onnx
+graphify/users/
+*.akansha-graph.json
 
 # Generated user artifacts
 public/generated/
@@ -66,6 +72,7 @@ generated/**
 downloads/
 exports/
 artifacts/
+generated_artifacts/
 *.generated.pdf
 *.generated.docx
 *.generated.pptx
@@ -78,8 +85,6 @@ artifacts/
 recordings/
 screenshots/
 tmp_voice_recording_frames/
-*.webm
-*.wav
 *.mp3.tmp
 *.mp4.tmp
 *.png.tmp
@@ -102,7 +107,6 @@ playwright-report/
 .playwright/
 
 # Temporary generated artifacts
-generated_artifacts/
 tmp_*/
 *.tmp
 *.temp
@@ -111,7 +115,7 @@ codechef-login.html
 tmp-chat.html
 debug_prompt.txt
 
-# Local provider/runtime cache
+# Local caches
 .openrouter-cache/
 .openai-cache/
 .mcp-cache/
@@ -128,3 +132,11 @@ desktop.ini
 .vscode/*
 !.vscode/extensions.json
 !.vscode/settings.json
+
+# ==============================================================================
+# Whitelisted Assets, Images & Presence Media
+# ==============================================================================
+!public/assets/**
+!public/assets/images/**
+!public/assets/presence/**
+!public/favicon.ico

@@ -1,14 +1,23 @@
 'use client';
 
-import React, { useState, useRef, useCallback } from 'react';
-import { Paperclip, Mic, MicOff, Send, Square, BookMarked, Image as ImageIcon, X, FileText } from 'lucide-react';
+import React, { useState, useRef, useCallback, memo } from 'react';
+import {
+  Paperclip,
+  Mic,
+  MicOff,
+  Send,
+  Square,
+  BookMarked,
+  Image as ImageIcon,
+  X,
+  FileText,
+} from 'lucide-react';
 import {
   autoRouteCognitivePrompt,
   expandSlashCommand,
   getSlashCommandSuggestions,
   type SlashCommandDefinition,
 } from '@/lib/slashCommands';
-
 
 interface ChatComposerProps {
   onSend: (content: string, attachments?: File[]) => void;
@@ -29,7 +38,32 @@ function stableClipboardImageSignature(file: File) {
   return `${file.type || 'image/png'}:${file.size}`;
 }
 
-export default function ChatComposer({ onSend, onStop, onOpenPromptLibrary, isStreaming, onToggleMic, isListening }: ChatComposerProps) {
+/**
+ * Memoised, and it took three fixes upstream in ChatThread to make the memo hold.
+ *
+ * ChatThread keeps `streamingContent` in state, so it re-renders on every token of
+ * a reply and re-rendered all 494 lines of this component with it. Three of the
+ * seven props were unstable:
+ *   - `onSend` (`handleSend`) listed `messages` in its `useCallback` deps for a
+ *     single read in the planner-title branch, so it changed identity every time a
+ *     message settled. It now reads `messagesRef`.
+ *   - `onOpenPromptLibrary` was an inline arrow in the JSX. It is now `useCallback`ed
+ *     as `openPromptLibrary`.
+ *   - the rest (`onStop`, `onToggleMic`) were already `useCallback`ed over stable
+ *     helpers, and `isStreaming` / `isListening` / `selectedModel` are primitives.
+ *
+ * `selectedModel` is declared in the props interface but never read in here. Left
+ * alone deliberately -- it is a string, so it costs the memo nothing, and removing
+ * it means touching the call site too.
+ */
+const ChatComposer = memo(function ChatComposer({
+  onSend,
+  onStop,
+  onOpenPromptLibrary,
+  isStreaming,
+  onToggleMic,
+  isListening,
+}: ChatComposerProps) {
   const [content, setContent] = useState('');
   const redoStackRef = useRef<string[]>([]);
   const [attachments, setAttachments] = useState<File[]>([]);
@@ -71,7 +105,7 @@ export default function ChatComposer({ onSend, onStop, onOpenPromptLibrary, isSt
   }, []);
 
   React.useEffect(() => {
-    const handleApplyPrompt = (e: any) => {
+    const handleApplyPrompt = (e: WindowEventMap['akansha-apply-prompt']) => {
       const promptText = e.detail;
       setComposerContent(promptText);
 
@@ -150,7 +184,9 @@ export default function ChatComposer({ onSend, onStop, onOpenPromptLibrary, isSt
       }
       if (e.key === 'ArrowUp') {
         e.preventDefault();
-        setSelectedSlashIndex((index) => (index - 1 + slashSuggestions.length) % slashSuggestions.length);
+        setSelectedSlashIndex(
+          (index) => (index - 1 + slashSuggestions.length) % slashSuggestions.length
+        );
         return;
       }
       if (e.key === 'Tab') {
@@ -185,21 +221,24 @@ export default function ChatComposer({ onSend, onStop, onOpenPromptLibrary, isSt
     focusAndResize();
   };
 
-  const addFiles = useCallback((files: File[]) => {
-    if (files.length === 0) return;
-    setAttachments((prev) => {
-      const seen = new Set(prev.map(stableFileSignature));
-      const uniqueFiles = files.filter((file) => {
-        const signature = stableFileSignature(file);
-        if (seen.has(signature)) return false;
-        seen.add(signature);
-        return true;
+  const addFiles = useCallback(
+    (files: File[]) => {
+      if (files.length === 0) return;
+      setAttachments((prev) => {
+        const seen = new Set(prev.map(stableFileSignature));
+        const uniqueFiles = files.filter((file) => {
+          const signature = stableFileSignature(file);
+          if (seen.has(signature)) return false;
+          seen.add(signature);
+          return true;
+        });
+        if (uniqueFiles.length === 0) return prev;
+        return [...prev, ...uniqueFiles].slice(0, 5);
       });
-      if (uniqueFiles.length === 0) return prev;
-      return [...prev, ...uniqueFiles].slice(0, 5);
-    });
-    focusAndResize();
-  }, [focusAndResize]);
+      focusAndResize();
+    },
+    [focusAndResize]
+  );
 
   const handleFileSelect = (files: FileList | null) => {
     if (!files) return;
@@ -229,36 +268,43 @@ export default function ChatComposer({ onSend, onStop, onOpenPromptLibrary, isSt
     return pastedImages;
   }, []);
 
-  const attachClipboardImages = useCallback((clipboardData: DataTransfer | null | undefined) => {
-    const pastedImages = extractClipboardImages(clipboardData);
-    if (pastedImages.length === 0) return false;
+  const attachClipboardImages = useCallback(
+    (clipboardData: DataTransfer | null | undefined) => {
+      const pastedImages = extractClipboardImages(clipboardData);
+      if (pastedImages.length === 0) return false;
 
-    const signature = pastedImages
-      .map(stableFileSignature)
-      .join('|');
-    const previous = lastClipboardImagePasteRef.current;
-    const now = Date.now();
-    if (previous?.signature === signature && now - previous.time < 750) {
+      const signature = pastedImages.map(stableFileSignature).join('|');
+      const previous = lastClipboardImagePasteRef.current;
+      const now = Date.now();
+      if (previous?.signature === signature && now - previous.time < 750) {
+        return true;
+      }
+
+      lastClipboardImagePasteRef.current = { signature, time: now };
+      addFiles(pastedImages);
       return true;
-    }
+    },
+    [addFiles, extractClipboardImages]
+  );
 
-    lastClipboardImagePasteRef.current = { signature, time: now };
-    addFiles(pastedImages);
-    return true;
-  }, [addFiles, extractClipboardImages]);
+  const handlePaste = useCallback(
+    (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+      if (!attachClipboardImages(e.clipboardData)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.nativeEvent.stopImmediatePropagation();
+    },
+    [attachClipboardImages]
+  );
 
-  const handlePaste = useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {
-    if (!attachClipboardImages(e.clipboardData)) return;
-    e.preventDefault();
-    e.stopPropagation();
-    e.nativeEvent.stopImmediatePropagation();
-  }, [attachClipboardImages]);
-
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-    addFiles(Array.from(e.dataTransfer.files));
-  }, [addFiles]);
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setIsDragging(false);
+      addFiles(Array.from(e.dataTransfer.files));
+    },
+    [addFiles]
+  );
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -268,7 +314,7 @@ export default function ChatComposer({ onSend, onStop, onOpenPromptLibrary, isSt
   const handleDragLeave = () => setIsDragging(false);
 
   const removeAttachment = (index: number) => {
-    setAttachments(prev => prev.filter((_, i) => i !== index));
+    setAttachments((prev) => prev.filter((_, i) => i !== index));
   };
 
   const getFileIcon = (file: File) => {
@@ -278,178 +324,201 @@ export default function ChatComposer({ onSend, onStop, onOpenPromptLibrary, isSt
 
   return (
     <div className="px-4 pb-4 pt-2" data-akansha-chat-composer="true">
-      {isDragging && (
-        <div className="absolute inset-4 rounded-xl border-2 border-dashed border-[#6C47FF] bg-[#6C47FF]/5 z-10 flex items-center justify-center pointer-events-none">
-          <p className="text-sm font-medium text-[#6C47FF]">Drop files to attach</p>
-        </div>
-      )}
+      {/* Padded outer, capped inner -- the same two-element structure the message
+          list uses, and it has to be two elements. With `max-w-3xl` and `px-4` on
+          one div the cap measured the padding too, so the bordered input box came
+          out 736px against the bubbles' 768px and sat inset 17px from them: at
+          1440px the box visibly stepped in from the column above it. Measured, not
+          guessed -- message column left 614, textarea left 631. */}
+      <div className="mx-auto w-full max-w-3xl">
+        {isDragging && (
+          <div className="absolute inset-4 rounded-xl border-2 border-dashed border-primary bg-primary/5 z-10 flex items-center justify-center pointer-events-none">
+            <p className="text-sm font-medium text-primary">Drop files to attach</p>
+          </div>
+        )}
 
-      <div
-        className={`
+        <div
+          className={`
           relative border rounded-2xl bg-card transition-all duration-150
-          ${isDragging ? 'border-[#6C47FF]' : 'border-border'}
-          focus-within:border-[#6C47FF]/50 focus-within:ring-1 focus-within:ring-[#6C47FF]/20
+          ${isDragging ? 'border-primary' : 'border-border'}
+          focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-primary/20
         `}
-        onDrop={handleDrop}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-      >
-        {attachments.length > 0 && (
-          <div className="flex flex-wrap gap-2 px-4 pt-3">
-            {attachments.map((file, i) => (
-              <div key={`attachment-${i}-${file.name}`} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-muted border border-border text-xs group">
-                {getFileIcon(file)}
-                <span className="font-mono text-foreground max-w-[120px] truncate">{file.name}</span>
-                <span className="text-muted-foreground">{(file.size / 1024).toFixed(0)}KB</span>
-                <button type="button" onClick={() => removeAttachment(i)} className="text-muted-foreground hover:text-red-500 transition-colors ml-1">
-                  <X size={11} />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {isListening && (
-          <div className="flex items-center gap-3 px-4 pt-3">
-            <div className="flex items-center gap-1">
-              {[0, 1, 2, 3, 4].map(i => (
+          onDrop={handleDrop}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+        >
+          {attachments.length > 0 && (
+            <div className="flex flex-wrap gap-2 px-4 pt-3">
+              {attachments.map((file, i) => (
                 <div
-                  key={`wave-${i}`}
-                  className="w-1 bg-red-500 rounded-full waveform-bar"
-                  style={{ animationDelay: `${i * 0.1}s` }}
-                />
-              ))}
-            </div>
-            <span className="text-xs text-red-500 font-medium animate-pulse">Listening...</span>
-          </div>
-        )}
-
-        {showSlashMenu && (
-          <div className="mx-3 mt-3 rounded-2xl border border-[#6C47FF]/30 bg-background/95 shadow-2xl shadow-[#6C47FF]/10 overflow-hidden animate-fade-in">
-            <div className="flex items-center justify-between px-3 py-2 border-b border-border/70">
-              <span className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                Slash commands
-              </span>
-              <span className="text-[11px] text-muted-foreground">Use arrows, Tab, or click</span>
-            </div>
-            <div className="max-h-72 overflow-y-auto scrollbar-thin p-1.5">
-              {slashSuggestions.map((command, index) => (
-                <button
-                  key={`slash-${command.name}`}
-                  type="button"
-                  onMouseDown={(event) => {
-                    event.preventDefault();
-                    applySlashSuggestion(command);
-                  }}
-                  className={`w-full text-left rounded-xl px-3 py-2.5 transition-colors ${
-                    index === selectedSlashIndex
-                      ? 'bg-[#6C47FF]/15 text-foreground'
-                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                  }`}
+                  key={`attachment-${i}-${file.name}`}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-muted border border-border text-xs group"
                 >
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="font-mono text-sm text-[#8F72FF]">/{command.name}</span>
-                    <span className="rounded-full border border-border px-2 py-0.5 text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
-                      {command.category}
-                    </span>
-                  </div>
-                  <p className="mt-1 text-xs leading-relaxed">{command.description}</p>
-                </button>
+                  {getFileIcon(file)}
+                  <span className="font-mono text-foreground max-w-[120px] truncate">
+                    {file.name}
+                  </span>
+                  <span className="text-muted-foreground">{(file.size / 1024).toFixed(0)}KB</span>
+                  <button
+                    type="button"
+                    onClick={() => removeAttachment(i)}
+                    className="text-muted-foreground hover:text-red-500 transition-colors ml-1"
+                  >
+                    <X size={11} />
+                  </button>
+                </div>
               ))}
             </div>
-          </div>
-        )}
+          )}
 
-        <textarea
-          ref={textareaRef}
-          value={content}
-          onChange={handleInput}
-          onPaste={handlePaste}
-          onKeyDown={handleKeyDown}
-          placeholder="Message Akansha... Type / for commands"
-          rows={1}
-          className="w-full bg-transparent px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground resize-none focus:outline-none leading-relaxed min-h-[52px]"
-        />
+          {isListening && (
+            <div className="flex items-center gap-3 px-4 pt-3">
+              <div className="flex items-center gap-1">
+                {[0, 1, 2, 3, 4].map((i) => (
+                  <div
+                    key={`wave-${i}`}
+                    className="w-1 bg-red-500 rounded-full waveform-bar"
+                    style={{ animationDelay: `${i * 0.1}s` }}
+                  />
+                ))}
+              </div>
+              <span className="text-xs text-red-500 font-medium animate-pulse">Listening...</span>
+            </div>
+          )}
 
-        <div className="flex items-center justify-between px-3 pb-3">
-          <div className="flex items-center gap-1">
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              accept="image/*,.pdf,.txt,.md,.ts,.tsx,.js,.jsx,.py,.json,.csv"
-              className="hidden"
-              onChange={e => handleFileSelect(e.target.files)}
-            />
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="p-2 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-              title="Attach files"
-            >
-              <Paperclip size={16} />
-            </button>
-            <button
-              type="button"
-              onClick={onOpenPromptLibrary}
-              className="p-2 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-              title="Prompt templates"
-            >
-              <BookMarked size={16} />
-            </button>
-            {onToggleMic && (
+          {showSlashMenu && (
+            <div className="mx-3 mt-3 rounded-2xl border border-primary/30 bg-background/95 shadow-2xl shadow-primary/10 overflow-hidden animate-fade-in">
+              <div className="flex items-center justify-between px-3 py-2 border-b border-border/70">
+                <span className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+                  Slash commands
+                </span>
+                <span className="text-[11px] text-muted-foreground">Use arrows, Tab, or click</span>
+              </div>
+              <div className="max-h-72 overflow-y-auto scrollbar-thin p-1.5">
+                {slashSuggestions.map((command, index) => (
+                  <button
+                    key={`slash-${command.name}`}
+                    type="button"
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      applySlashSuggestion(command);
+                    }}
+                    className={`w-full text-left rounded-xl px-3 py-2.5 transition-colors ${
+                      index === selectedSlashIndex
+                        ? 'bg-primary/15 text-foreground'
+                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="font-mono text-sm text-[#8F72FF]">/{command.name}</span>
+                      <span className="rounded-full border border-border px-2 py-0.5 text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+                        {command.category}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs leading-relaxed">{command.description}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <textarea
+            ref={textareaRef}
+            value={content}
+            onChange={handleInput}
+            onPaste={handlePaste}
+            onKeyDown={handleKeyDown}
+            placeholder="Message Akansha... Type / for commands"
+            rows={1}
+            className="w-full bg-transparent px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground resize-none focus:outline-none leading-relaxed min-h-[52px]"
+          />
+
+          <div className="flex items-center justify-between px-3 pb-3">
+            <div className="flex items-center gap-1">
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept="image/*,.pdf,.txt,.md,.ts,.tsx,.js,.jsx,.py,.json,.csv"
+                className="hidden"
+                onChange={(e) => handleFileSelect(e.target.files)}
+              />
               <button
                 type="button"
-                onClick={onToggleMic}
-                className={`p-2 rounded-lg transition-colors ${
-                  isListening
-                    ? 'bg-red-500/10 text-red-500 hover:bg-red-500/20' :'hover:bg-muted text-muted-foreground hover:text-foreground'
-                }`}
-                title={isListening ? 'Stop listening' : 'Voice input'}
+                onClick={() => fileInputRef.current?.click()}
+                className="p-2 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                title="Attach files"
               >
-                {isListening ? <MicOff size={16} /> : <Mic size={16} />}
+                <Paperclip size={16} />
               </button>
-            )}
-          </div>
-
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground/60 hidden sm:block">
-              {content.length > 0 && `${content.length} chars`}
-            </span>
-            {isStreaming && (
               <button
                 type="button"
-                onClick={onStop}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 text-xs font-medium hover:bg-red-500/20 transition-colors"
+                onClick={onOpenPromptLibrary}
+                className="p-2 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                title="Prompt templates"
               >
-                <Square size={12} fill="currentColor" />
-                Stop
+                <BookMarked size={16} />
               </button>
-            )}
-            {!isStreaming || canSend ? (
-              <button
-                type="button"
-                onClick={handleSend}
-                disabled={!canSend}
-                className={`
+              {onToggleMic && (
+                <button
+                  type="button"
+                  onClick={onToggleMic}
+                  className={`p-2 rounded-lg transition-colors ${
+                    isListening
+                      ? 'bg-red-500/10 text-red-500 hover:bg-red-500/20'
+                      : 'hover:bg-muted text-muted-foreground hover:text-foreground'
+                  }`}
+                  title={isListening ? 'Stop listening' : 'Voice input'}
+                >
+                  {isListening ? <MicOff size={16} /> : <Mic size={16} />}
+                </button>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground/60 hidden sm:block">
+                {content.length > 0 && `${content.length} chars`}
+              </span>
+              {isStreaming && (
+                <button
+                  type="button"
+                  onClick={onStop}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 text-xs font-medium hover:bg-red-500/20 transition-colors"
+                >
+                  <Square size={12} fill="currentColor" />
+                  Stop
+                </button>
+              )}
+              {!isStreaming || canSend ? (
+                <button
+                  type="button"
+                  onClick={handleSend}
+                  disabled={!canSend}
+                  className={`
                   flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all duration-150 active:scale-95
-                  ${canSend
-                    ? 'bg-[#6C47FF] hover:bg-[#5A35EE] text-white shadow-sm shadow-[#6C47FF]/20'
-                    : 'bg-muted text-muted-foreground cursor-not-allowed'
+                  ${
+                    canSend
+                      ? 'bg-primary hover:bg-primary-hover text-white shadow-sm shadow-primary/20'
+                      : 'bg-muted text-muted-foreground cursor-not-allowed'
                   }
                 `}
-              >
-                <Send size={13} />
-                Send
-              </button>
-            ) : null}
+                >
+                  <Send size={13} />
+                  Send
+                </button>
+              ) : null}
+            </div>
           </div>
         </div>
-      </div>
 
-      <p className="text-center text-xs text-muted-foreground/40 mt-2">
-        Akansha can make mistakes. Verify important information.
-      </p>
+        <p className="text-center text-xs text-muted-foreground/40 mt-2">
+          Akansha can make mistakes. Verify important information.
+        </p>
+      </div>
     </div>
   );
-}
+});
+
+ChatComposer.displayName = 'ChatComposer';
+
+export default ChatComposer;

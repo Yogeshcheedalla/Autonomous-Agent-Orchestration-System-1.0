@@ -7,6 +7,7 @@ const GENERATED_ROOT = path.resolve(process.cwd(), 'generated_artifacts');
 const CONTENT_TYPES: Record<string, string> = {
   '.csv': 'text/csv; charset=utf-8',
   '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.html': 'text/html; charset=utf-8',
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
   '.json': 'application/json; charset=utf-8',

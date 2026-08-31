@@ -28,8 +28,8 @@ export default function AppLayout({ children, activePath }: AppLayoutProps) {
       <div className="flex h-screen overflow-hidden bg-background">
         {/* Navigation Progress Bar */}
         {isNavigating && (
-          <div className="fixed top-0 left-0 right-0 h-0.5 z-[60] bg-[#6C47FF] overflow-hidden">
-            <div className="h-full bg-[#00C9A7] animate-progress-bar w-full origin-left" />
+          <div className="fixed top-0 left-0 right-0 h-0.5 z-[60] bg-primary overflow-hidden">
+            <div className="h-full bg-accent animate-progress-bar w-full origin-left" />
           </div>
         )}
         {/* Mobile overlay */}
@@ -62,9 +62,7 @@ export default function AppLayout({ children, activePath }: AppLayoutProps) {
             onMobileMenuOpen={() => setMobileSidebarOpen(true)}
             sidebarCollapsed={sidebarCollapsed}
           />
-          <main className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
-            {children}
-          </main>
+          <main className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">{children}</main>
         </div>
       </div>
       <Toaster

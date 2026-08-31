@@ -1,7 +1,17 @@
 'use client';
 
-import React, { useState } from 'react';
-import { Copy, RotateCcw, ThumbsUp, ThumbsDown, Brain, Check, Code2, Pin, GitBranch } from 'lucide-react';
+import React, { useState, memo } from 'react';
+import {
+  Copy,
+  RotateCcw,
+  ThumbsUp,
+  ThumbsDown,
+  Brain,
+  Check,
+  Code2,
+  Pin,
+  GitBranch,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import type { Message } from './ChatThread';
 
@@ -13,9 +23,18 @@ interface MessageBubbleProps {
 }
 
 const MODEL_BADGES: Record<string, { label: string; color: string }> = {
-  'GPT-4o': { label: 'Akansha', color: 'bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20' },
-  'Claude 3.5': { label: 'Claude 3.5', color: 'bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20' },
-  'Gemini 1.5': { label: 'Gemini 1.5', color: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20' },
+  'GPT-4o': {
+    label: 'Akansha',
+    color: 'bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20',
+  },
+  'Claude 3.5': {
+    label: 'Claude 3.5',
+    color: 'bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20',
+  },
+  'Gemini 1.5': {
+    label: 'Gemini 1.5',
+    color: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20',
+  },
 };
 
 function cleanUrl(url: string) {
@@ -60,7 +79,9 @@ function renderInlineText(text: string, keyPrefix: string): React.ReactNode[] {
     const markdownLabel = match[2];
     const markdownUrl = match[3];
     const href = markdownUrl || raw;
-    nodes.push(renderLink(markdownLabel || cleanUrl(raw), href, `${keyPrefix}-link-${match.index}`));
+    nodes.push(
+      renderLink(markdownLabel || cleanUrl(raw), href, `${keyPrefix}-link-${match.index}`)
+    );
     cursor = match.index + raw.length;
   }
 
@@ -78,7 +99,10 @@ function renderInlineSegment(segment: string, keyPrefix: string): React.ReactNod
     if (!part) return;
     if (part.startsWith('`') && part.endsWith('`')) {
       nodes.push(
-        <code key={key} className="px-1.5 py-0.5 rounded bg-muted font-mono text-xs text-[#6C47FF] dark:text-[#9B7FFF]">
+        <code
+          key={key}
+          className="px-1.5 py-0.5 rounded bg-muted font-mono text-xs text-primary dark:text-[#9B7FFF]"
+        >
           {part.slice(1, -1)}
         </code>
       );
@@ -126,12 +150,18 @@ function renderMarkdownTable(tableLines: string[], key: string) {
   const body = tableLines.slice(2).map(parseMarkdownTableLine);
 
   return (
-    <div key={key} className="my-3 w-full overflow-x-auto rounded-xl border border-[#6C47FF]/20 bg-[#080914]/40">
+    <div
+      key={key}
+      className="my-3 w-full overflow-x-auto rounded-xl border border-primary/20 bg-[#080914]/40"
+    >
       <table className="min-w-full border-collapse text-left text-xs">
-        <thead className="bg-[#6C47FF]/12 text-[#D8D0FF]">
+        <thead className="bg-primary/12 text-[#D8D0FF]">
           <tr>
             {header.map((cell, index) => (
-              <th key={`${key}-head-${index}`} className="border-b border-[#6C47FF]/20 px-3 py-2 font-semibold">
+              <th
+                key={`${key}-head-${index}`}
+                className="border-b border-primary/20 px-3 py-2 font-semibold"
+              >
                 {renderInlineSegment(cell, `${key}-head-${index}`)}
               </th>
             ))}
@@ -141,8 +171,14 @@ function renderMarkdownTable(tableLines: string[], key: string) {
           {body.map((row, rowIndex) => (
             <tr key={`${key}-row-${rowIndex}`} className="odd:bg-white/[0.025]">
               {header.map((_, cellIndex) => (
-                <td key={`${key}-cell-${rowIndex}-${cellIndex}`} className="border-b border-white/5 px-3 py-2 align-top text-foreground/90">
-                  {renderInlineSegment(row[cellIndex] || '', `${key}-cell-${rowIndex}-${cellIndex}`)}
+                <td
+                  key={`${key}-cell-${rowIndex}-${cellIndex}`}
+                  className="border-b border-white/5 px-3 py-2 align-top text-foreground/90"
+                >
+                  {renderInlineSegment(
+                    row[cellIndex] || '',
+                    `${key}-cell-${rowIndex}-${cellIndex}`
+                  )}
                 </td>
               ))}
             </tr>
@@ -161,7 +197,11 @@ function renderTextWithTables(text: string, keyPrefix: string): React.ReactNode[
     if (isMarkdownTableStart(lines, index)) {
       const tableLines = [lines[index], lines[index + 1]];
       index += 2;
-      while (index < lines.length && lines[index].trim().startsWith('|') && lines[index].trim().endsWith('|')) {
+      while (
+        index < lines.length &&
+        lines[index].trim().startsWith('|') &&
+        lines[index].trim().endsWith('|')
+      ) {
         tableLines.push(lines[index]);
         index += 1;
       }
@@ -189,7 +229,10 @@ function formatContent(content: string): React.ReactNode[] {
       const lang = lines[0].replace('```', '').trim() || 'code';
       const code = lines.slice(1, -1).join('\n');
       return (
-        <div key={`code-block-${i}`} className="my-3 rounded-xl overflow-hidden border border-border bg-zinc-950 dark:bg-zinc-900">
+        <div
+          key={`code-block-${i}`}
+          className="my-3 rounded-xl overflow-hidden border border-border bg-zinc-950 dark:bg-zinc-900"
+        >
           <div className="flex items-center justify-between px-4 py-2 bg-zinc-900 dark:bg-zinc-800 border-b border-border">
             <div className="flex items-center gap-2">
               <Code2 size={13} className="text-muted-foreground" />
@@ -203,7 +246,9 @@ function formatContent(content: string): React.ReactNode[] {
         </div>
       );
     }
-    return <React.Fragment key={`text-${i}`}>{renderTextWithTables(part, `line-${i}`)}</React.Fragment>;
+    return (
+      <React.Fragment key={`text-${i}`}>{renderTextWithTables(part, `line-${i}`)}</React.Fragment>
+    );
   });
 }
 
@@ -215,7 +260,10 @@ function CopyCodeButton({ code }: { code: string }) {
     setTimeout(() => setCopied(false), 2000);
   };
   return (
-    <button onClick={handleCopy} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
+    <button
+      onClick={handleCopy}
+      className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+    >
       {copied ? <Check size={12} className="text-green-400" /> : <Copy size={12} />}
       <span>{copied ? 'Copied' : 'Copy'}</span>
     </button>
@@ -223,11 +271,17 @@ function CopyCodeButton({ code }: { code: string }) {
 }
 
 function formatTime(date: Date): string {
-  return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+  return date.toLocaleTimeString('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  });
 }
 
 function formatMessageDateTime(date: Date): string {
   return date.toLocaleString('en-IN', {
+    timeZone: 'Asia/Kolkata',
     day: '2-digit',
     month: 'short',
     year: 'numeric',
@@ -237,7 +291,32 @@ function formatMessageDateTime(date: Date): string {
   });
 }
 
-export default function MessageBubble({ message, onTogglePin, onContinueFrom, isBranchAnchor }: MessageBubbleProps) {
+/**
+ * Memoised, and this is the single largest render win in the chat.
+ *
+ * ChatThread holds `streamingContent` in state, so it re-renders on every token of
+ * a streaming reply. Without a memo boundary here, every token re-rendered every
+ * bubble already on screen: a 500-token answer in a 100-message thread meant
+ * ~50,000 renders of this 480-line component, all of them producing identical
+ * output. That is the stutter that reads as "the chat is slow to respond" even
+ * when the backend has already sent the text.
+ *
+ * The memo is sound because all four props are stable between tokens:
+ *   - `message` objects come from the messages array in state and keep their
+ *     identity until that message itself changes;
+ *   - `onTogglePin` and `onContinueFrom` are useCallback'd with `[]` deps in
+ *     ChatThread, so they are created once;
+ *   - `isBranchAnchor` is a boolean.
+ * The streaming bubble is a separate instance built from a fresh object literal
+ * each render, so it keeps updating on every token exactly as before -- the memo
+ * skips the settled messages, not the one that is actually changing.
+ */
+const MessageBubble = memo(function MessageBubble({
+  message,
+  onTogglePin,
+  onContinueFrom,
+  isBranchAnchor,
+}: MessageBubbleProps) {
   const [liked, setLiked] = useState<boolean | null>(null);
   const isUser = message.role === 'user';
   const badge = message.model ? MODEL_BADGES[message.model] : null;
@@ -251,22 +330,26 @@ export default function MessageBubble({ message, onTogglePin, onContinueFrom, is
     <div
       id={`chat-message-${message.id}`}
       className={`flex gap-3 py-3 group scroll-mt-32 ${isUser ? 'flex-row-reverse' : 'flex-row'} ${
-        isBranchAnchor ? 'rounded-2xl bg-[#6C47FF]/5 ring-1 ring-[#6C47FF]/20 px-2' : ''
+        isBranchAnchor ? 'rounded-2xl bg-primary/5 ring-1 ring-primary/20 px-2' : ''
       }`}
     >
       {/* Avatar */}
-      <div className={`w-8 h-8 rounded-full shrink-0 flex items-center justify-center text-xs font-semibold mt-0.5 ${
-        isUser
-          ? 'bg-gradient-to-br from-[#6C47FF] to-[#00C9A7] text-white'
-          : 'bg-gradient-to-br from-zinc-700 to-zinc-600 text-zinc-200 border border-border'
-      }`}>
+      <div
+        className={`w-8 h-8 rounded-full shrink-0 flex items-center justify-center text-xs font-semibold mt-0.5 ${
+          isUser
+            ? 'bg-gradient-to-br from-primary to-accent text-white'
+            : 'bg-gradient-to-br from-zinc-700 to-zinc-600 text-zinc-200 border border-border'
+        }`}
+      >
         {isUser ? 'A' : 'AI'}
       </div>
 
       <div className={`flex flex-col gap-1 max-w-[75%] ${isUser ? 'items-end' : 'items-start'}`}>
         {/* Header row */}
         <div className={`flex items-center gap-2 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
-          <span className={`text-xs font-medium ${isUser ? 'text-foreground' : 'text-green-600 dark:text-green-400'}`}>
+          <span
+            className={`text-xs font-medium ${isUser ? 'text-foreground' : 'text-green-600 dark:text-green-400'}`}
+          >
             {isUser ? 'You' : 'Akansha'}
           </span>
           {badge && (
@@ -275,7 +358,7 @@ export default function MessageBubble({ message, onTogglePin, onContinueFrom, is
             </span>
           )}
           {message.memoryRefs && message.memoryRefs.length > 0 && (
-            <span className="flex items-center gap-1 text-xs text-[#00C9A7] px-2 py-0.5 rounded-full bg-[#00C9A7]/10 border border-[#00C9A7]/20">
+            <span className="flex items-center gap-1 text-xs text-accent px-2 py-0.5 rounded-full bg-accent/10 border border-accent/20">
               <Brain size={10} />
               Memory
             </span>
@@ -297,19 +380,30 @@ export default function MessageBubble({ message, onTogglePin, onContinueFrom, is
         {/* Attachments */}
         {message.attachments && message.attachments.length > 0 && (
           <div className="flex flex-wrap gap-2 mb-1">
-            {message.attachments.map(att => (
-              <div key={att.id} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-[#6C47FF]/10 border border-[#6C47FF]/20 text-xs">
+            {message.attachments.map((att) => (
+              <div
+                key={att.id}
+                className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-primary/10 border border-primary/20 text-xs"
+              >
                 {att.previewUrl ? (
+                  // Deliberately a raw <img>: previewUrl is a `blob:` URL from
+                  // URL.createObjectURL on a locally-picked file, which the
+                  // next/image optimizer cannot fetch. There is also nothing to
+                  // optimize — the source is already in memory and this renders
+                  // at 56x40.
+                  // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={att.previewUrl}
                     alt={att.name}
-                    className="h-10 w-14 rounded-md object-cover border border-[#6C47FF]/20"
+                    className="h-10 w-14 rounded-md object-cover border border-primary/20"
                   />
                 ) : (
-                  <Code2 size={12} className="text-[#6C47FF]" />
+                  <Code2 size={12} className="text-primary" />
                 )}
                 <div className="min-w-0">
-                  <span className="block font-mono text-[#6C47FF] dark:text-[#9B7FFF] max-w-44 truncate">{att.name}</span>
+                  <span className="block font-mono text-primary dark:text-[#9B7FFF] max-w-44 truncate">
+                    {att.name}
+                  </span>
                   <span className="block text-muted-foreground">{att.size}</span>
                 </div>
               </div>
@@ -318,11 +412,13 @@ export default function MessageBubble({ message, onTogglePin, onContinueFrom, is
         )}
 
         {/* Content bubble */}
-        <div className={`rounded-2xl px-4 py-3 text-sm leading-relaxed ${
-          isUser
-            ? 'bg-[#6C47FF] text-white rounded-tr-sm'
-            : 'bg-card border border-border text-foreground rounded-tl-sm'
-        }`}>
+        <div
+          className={`rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+            isUser
+              ? 'bg-primary text-white rounded-tr-sm'
+              : 'bg-card border border-border text-foreground rounded-tl-sm'
+          }`}
+        >
           {isUser ? (
             <p>{message.content}</p>
           ) : (
@@ -335,8 +431,14 @@ export default function MessageBubble({ message, onTogglePin, onContinueFrom, is
 
         {/* Actions (AI messages only) */}
         {!message.isStreaming && (
-          <div className={`flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity ${isUser ? 'flex-row-reverse' : ''}`}>
-            <button onClick={handleCopy} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors" title="Copy message">
+          <div
+            className={`flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity ${isUser ? 'flex-row-reverse' : ''}`}
+          >
+            <button
+              onClick={handleCopy}
+              className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+              title="Copy message"
+            >
               <Copy size={13} />
             </button>
             {onTogglePin && (
@@ -357,7 +459,7 @@ export default function MessageBubble({ message, onTogglePin, onContinueFrom, is
                 onClick={() => onContinueFrom(message)}
                 className={`p-1.5 rounded-lg transition-colors ${
                   isBranchAnchor
-                    ? 'text-[#6C47FF] bg-[#6C47FF]/10'
+                    ? 'text-primary bg-primary/10'
                     : 'hover:bg-muted text-muted-foreground hover:text-foreground'
                 }`}
                 title="Continue conversation from this message"
@@ -367,7 +469,10 @@ export default function MessageBubble({ message, onTogglePin, onContinueFrom, is
             )}
             {!isUser && (
               <>
-                <button className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors" title="Regenerate">
+                <button
+                  className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                  title="Regenerate"
+                >
                   <RotateCcw size={13} />
                 </button>
                 <button
@@ -391,4 +496,8 @@ export default function MessageBubble({ message, onTogglePin, onContinueFrom, is
       </div>
     </div>
   );
-}
+});
+
+MessageBubble.displayName = 'MessageBubble';
+
+export default MessageBubble;

@@ -1,11 +1,6 @@
 import React from 'react';
-import AppLayout from '@/components/AppLayout';
-import ChatWorkspace from './components/ChatWorkspace';
+import ChatInterfaceClient from './components/ChatInterfaceClient';
 
 export default function ChatInterfacePage() {
-  return (
-    <AppLayout activePath="/chat-interface">
-      <ChatWorkspace />
-    </AppLayout>
-  );
+  return <ChatInterfaceClient />;
 }

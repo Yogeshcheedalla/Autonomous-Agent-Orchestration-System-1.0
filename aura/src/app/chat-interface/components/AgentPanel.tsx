@@ -1,7 +1,19 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Bot, CheckCircle2, AlertCircle, ChevronDown, ChevronRight, Terminal, Shield, Zap, Globe, Monitor, X } from 'lucide-react';
+import {
+  Bot,
+  CheckCircle2,
+  AlertCircle,
+  ChevronDown,
+  ChevronRight,
+  Terminal,
+  Shield,
+  Zap,
+  Globe,
+  Monitor,
+  X,
+} from 'lucide-react';
 import { toast } from 'sonner';
 
 interface AgentStep {
@@ -30,9 +42,24 @@ const DEMO_TASKS: AgentTask[] = [
     progress: 100,
     steps: [
       { id: 's1', label: 'Open browser', status: 'done', detail: 'Launched headless browser' },
-      { id: 's2', label: 'Navigate to news.ycombinator.com', status: 'done', detail: 'Page loaded in 1.2s' },
-      { id: 's3', label: 'Extract top AI stories', status: 'done', detail: 'Found 8 relevant articles' },
-      { id: 's4', label: 'Summarize content', status: 'done', detail: 'Generated 3-paragraph summary' },
+      {
+        id: 's2',
+        label: 'Navigate to news.ycombinator.com',
+        status: 'done',
+        detail: 'Page loaded in 1.2s',
+      },
+      {
+        id: 's3',
+        label: 'Extract top AI stories',
+        status: 'done',
+        detail: 'Found 8 relevant articles',
+      },
+      {
+        id: 's4',
+        label: 'Summarize content',
+        status: 'done',
+        detail: 'Generated 3-paragraph summary',
+      },
     ],
   },
   {
@@ -43,8 +70,19 @@ const DEMO_TASKS: AgentTask[] = [
     progress: 40,
     steps: [
       { id: 's1', label: 'Scan Downloads folder', status: 'done', detail: 'Found 47 files' },
-      { id: 's2', label: 'Categorize by file type', status: 'done', detail: 'Images: 12, Docs: 18, Code: 17' },
-      { id: 's3', label: 'Create subfolders', status: 'waiting_permission', detail: 'Will create 3 new folders', requiresPermission: true },
+      {
+        id: 's2',
+        label: 'Categorize by file type',
+        status: 'done',
+        detail: 'Images: 12, Docs: 18, Code: 17',
+      },
+      {
+        id: 's3',
+        label: 'Create subfolders',
+        status: 'waiting_permission',
+        detail: 'Will create 3 new folders',
+        requiresPermission: true,
+      },
       { id: 's4', label: 'Move files', status: 'pending' },
     ],
   },
@@ -65,8 +103,10 @@ const TYPE_COLORS = {
 };
 
 const STATUS_ICONS = {
-  done: <CheckCircle2 size={13} className="text-[#00C9A7]" />,
-  running: <div className="w-3 h-3 rounded-full border-2 border-[#6C47FF] border-t-transparent animate-spin" />,
+  done: <CheckCircle2 size={13} className="text-accent" />,
+  running: (
+    <div className="w-3 h-3 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+  ),
   error: <AlertCircle size={13} className="text-red-500" />,
   pending: <div className="w-3 h-3 rounded-full border border-border" />,
   waiting_permission: <Shield size={13} className="text-amber-500" />,
@@ -79,41 +119,48 @@ export default function AgentPanel() {
   const [logsVisible, setLogsVisible] = useState(false);
 
   const toggleExpand = (id: string) => {
-    setExpandedTasks(prev => {
+    setExpandedTasks((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   };
 
   const handlePermission = (taskId: string, stepId: string, allow: boolean) => {
     if (allow) {
-      setTasks(prev => prev.map(t => {
-        if (t.id !== taskId) return t;
-        return {
-          ...t,
-          status: 'running',
-          steps: t.steps.map(s => s.id === stepId ? { ...s, status: 'running' } : s),
-        };
-      }));
-      toast.success('Permission granted — continuing task');
-      // Simulate completion
-      setTimeout(() => {
-        setTasks(prev => prev.map(t => {
+      setTasks((prev) =>
+        prev.map((t) => {
           if (t.id !== taskId) return t;
           return {
             ...t,
-            status: 'completed',
-            progress: 100,
-            steps: t.steps.map(s => ({ ...s, status: 'done' as const })),
+            status: 'running',
+            steps: t.steps.map((s) => (s.id === stepId ? { ...s, status: 'running' } : s)),
           };
-        }));
+        })
+      );
+      toast.success('Permission granted — continuing task');
+      // Simulate completion
+      setTimeout(() => {
+        setTasks((prev) =>
+          prev.map((t) => {
+            if (t.id !== taskId) return t;
+            return {
+              ...t,
+              status: 'completed',
+              progress: 100,
+              steps: t.steps.map((s) => ({ ...s, status: 'done' as const })),
+            };
+          })
+        );
       }, 2000);
     } else {
-      setTasks(prev => prev.map(t => {
-        if (t.id !== taskId) return t;
-        return { ...t, status: 'paused' };
-      }));
+      setTasks((prev) =>
+        prev.map((t) => {
+          if (t.id !== taskId) return t;
+          return { ...t, status: 'paused' };
+        })
+      );
       toast.info('Task paused — permission denied');
     }
   };
@@ -133,8 +180,8 @@ export default function AgentPanel() {
         { id: 'ns4', label: 'Generating report', status: 'pending' },
       ],
     };
-    setTasks(prev => [newTask, ...prev]);
-    setExpandedTasks(prev => new Set([...prev, newTask.id]));
+    setTasks((prev) => [newTask, ...prev]);
+    setExpandedTasks((prev) => new Set([...prev, newTask.id]));
     setNewTaskInput('');
     toast.success('Agent task started');
   };
@@ -144,7 +191,7 @@ export default function AgentPanel() {
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2.5 border-b border-border shrink-0">
         <div className="flex items-center gap-2">
-          <Bot size={14} className="text-[#6C47FF]" />
+          <Bot size={14} className="text-primary" />
           <span className="text-xs font-semibold text-foreground">AI Agent</span>
         </div>
         <button
@@ -163,32 +210,37 @@ export default function AgentPanel() {
             type="text"
             placeholder="Describe a task for the agent..."
             value={newTaskInput}
-            onChange={e => setNewTaskInput(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && startNewTask()}
-            className="flex-1 bg-muted rounded-lg text-xs px-3 py-2 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-[#6C47FF]/40 border border-border"
+            onChange={(e) => setNewTaskInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && startNewTask()}
+            className="flex-1 bg-muted rounded-lg text-xs px-3 py-2 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 border border-border"
           />
           <button
             onClick={startNewTask}
-            className="px-3 py-2 rounded-lg bg-[#6C47FF] text-white text-xs font-medium hover:bg-[#5A35EE] transition-colors shrink-0"
+            className="px-3 py-2 rounded-lg bg-primary text-white text-xs font-medium hover:bg-primary-hover transition-colors shrink-0"
           >
             Run
           </button>
         </div>
 
         {/* Task list */}
-        {tasks.map(task => {
+        {tasks.map((task) => {
           const TypeIcon = TYPE_ICONS[task.type];
           const isExpanded = expandedTasks.has(task.id);
-          const permissionStep = task.steps.find(s => s.status === 'waiting_permission');
+          const permissionStep = task.steps.find((s) => s.status === 'waiting_permission');
 
           return (
-            <div key={task.id} className="rounded-xl border border-border bg-card/50 overflow-hidden">
+            <div
+              key={task.id}
+              className="rounded-xl border border-border bg-card/50 overflow-hidden"
+            >
               {/* Task header */}
               <button
                 onClick={() => toggleExpand(task.id)}
                 className="flex items-start gap-2.5 w-full p-3 hover:bg-muted/30 transition-colors text-left"
               >
-                <span className={`text-xs px-1.5 py-0.5 rounded border font-medium shrink-0 ${TYPE_COLORS[task.type]}`}>
+                <span
+                  className={`text-xs px-1.5 py-0.5 rounded border font-medium shrink-0 ${TYPE_COLORS[task.type]}`}
+                >
                   <TypeIcon size={10} className="inline mr-1" />
                   {task.type}
                 </span>
@@ -200,15 +252,24 @@ export default function AgentPanel() {
                       className="h-full rounded-full transition-all duration-500"
                       style={{
                         width: `${task.progress}%`,
-                        background: task.status === 'completed'
-                          ? '#00C9A7'
-                          : task.status === 'error' ?'#EF4444' :'linear-gradient(90deg, #6C47FF, #00C9A7)',
+                        background:
+                          task.status === 'completed'
+                            ? 'var(--teal-accent)'
+                            : task.status === 'error'
+                              ? '#EF4444'
+                              : 'linear-gradient(90deg, var(--violet-primary), var(--teal-accent))',
                       }}
                     />
                   </div>
-                  <p className="text-xs text-muted-foreground mt-0.5">{task.progress}% · {task.status}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {task.progress}% · {task.status}
+                  </p>
                 </div>
-                {isExpanded ? <ChevronDown size={13} className="text-muted-foreground shrink-0 mt-0.5" /> : <ChevronRight size={13} className="text-muted-foreground shrink-0 mt-0.5" />}
+                {isExpanded ? (
+                  <ChevronDown size={13} className="text-muted-foreground shrink-0 mt-0.5" />
+                ) : (
+                  <ChevronRight size={13} className="text-muted-foreground shrink-0 mt-0.5" />
+                )}
               </button>
 
               {/* Permission prompt */}
@@ -216,15 +277,18 @@ export default function AgentPanel() {
                 <div className="mx-3 mb-3 p-3 rounded-xl bg-amber-500/5 border border-amber-500/20">
                   <div className="flex items-center gap-2 mb-2">
                     <Shield size={13} className="text-amber-500" />
-                    <span className="text-xs font-semibold text-amber-600 dark:text-amber-400">Permission Required</span>
+                    <span className="text-xs font-semibold text-amber-600 dark:text-amber-400">
+                      Permission Required
+                    </span>
                   </div>
                   <p className="text-xs text-muted-foreground mb-3">
-                    <strong className="text-foreground">{permissionStep.label}</strong>: {permissionStep.detail}
+                    <strong className="text-foreground">{permissionStep.label}</strong>:{' '}
+                    {permissionStep.detail}
                   </p>
                   <div className="flex gap-2">
                     <button
                       onClick={() => handlePermission(task.id, permissionStep.id, true)}
-                      className="flex-1 px-3 py-1.5 rounded-lg bg-[#00C9A7]/15 text-[#00C9A7] text-xs font-medium hover:bg-[#00C9A7]/25 transition-colors border border-[#00C9A7]/20"
+                      className="flex-1 px-3 py-1.5 rounded-lg bg-accent/15 text-accent text-xs font-medium hover:bg-accent/25 transition-colors border border-accent/20"
                     >
                       Allow
                     </button>
@@ -245,7 +309,9 @@ export default function AgentPanel() {
                     <div key={step.id} className="flex items-start gap-2.5">
                       <div className="shrink-0 mt-0.5">{STATUS_ICONS[step.status]}</div>
                       <div className="flex-1 min-w-0">
-                        <p className={`text-xs font-medium ${step.status === 'pending' ? 'text-muted-foreground' : 'text-foreground'}`}>
+                        <p
+                          className={`text-xs font-medium ${step.status === 'pending' ? 'text-muted-foreground' : 'text-foreground'}`}
+                        >
                           {idx + 1}. {step.label}
                         </p>
                         {step.detail && (
@@ -265,16 +331,29 @@ export default function AgentPanel() {
           <div className="rounded-xl border border-border bg-zinc-950 dark:bg-zinc-900 overflow-hidden">
             <div className="flex items-center justify-between px-3 py-2 border-b border-border">
               <span className="text-xs font-mono text-muted-foreground">Agent Logs</span>
-              <button onClick={() => setLogsVisible(false)} className="text-muted-foreground hover:text-foreground">
+              <button
+                onClick={() => setLogsVisible(false)}
+                className="text-muted-foreground hover:text-foreground"
+              >
                 <X size={12} />
               </button>
             </div>
             <div className="p-3 font-mono text-xs text-zinc-300 space-y-1 max-h-32 overflow-y-auto scrollbar-thin">
-              <p><span className="text-green-400">[INFO]</span> Agent initialized</p>
-              <p><span className="text-blue-400">[TASK]</span> Loaded 2 tasks from history</p>
-              <p><span className="text-amber-400">[WARN]</span> Task agent-002 awaiting permission</p>
-              <p><span className="text-green-400">[INFO]</span> Browser automation ready</p>
-              <p><span className="text-zinc-500">[DEBUG]</span> Memory context loaded: 5 items</p>
+              <p>
+                <span className="text-green-400">[INFO]</span> Agent initialized
+              </p>
+              <p>
+                <span className="text-blue-400">[TASK]</span> Loaded 2 tasks from history
+              </p>
+              <p>
+                <span className="text-amber-400">[WARN]</span> Task agent-002 awaiting permission
+              </p>
+              <p>
+                <span className="text-green-400">[INFO]</span> Browser automation ready
+              </p>
+              <p>
+                <span className="text-zinc-500">[DEBUG]</span> Memory context loaded: 5 items
+              </p>
             </div>
           </div>
         )}

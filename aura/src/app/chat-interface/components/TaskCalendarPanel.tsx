@@ -1,8 +1,19 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
-import { Bell, CalendarDays, Check, CheckSquare, Clock3, Pencil, Plus, Trash2, X } from 'lucide-react';
+import React, { memo, useEffect, useMemo, useState } from 'react';
+import {
+  Bell,
+  CalendarDays,
+  Check,
+  CheckSquare,
+  Clock3,
+  Pencil,
+  Plus,
+  Trash2,
+  X,
+} from 'lucide-react';
 import { toast } from 'sonner';
+import { apiUrl } from '@/lib/apiBase';
 
 interface TaskItem {
   id: string;
@@ -31,6 +42,7 @@ interface CalendarEvent {
 const TASKS_STORAGE_KEY = 'akansha-planner-tasks';
 const EVENTS_STORAGE_KEY = 'akansha-planner-events';
 const PLANNER_ACTION_EVENT = 'akansha-planner-action';
+const PLANNER_STORAGE_SYNC_EVENT = 'akansha-planner-storage-updated';
 
 const DEFAULT_TASKS: TaskItem[] = [];
 
@@ -43,7 +55,7 @@ const PRIORITY_STYLES = {
 };
 
 const EVENT_STYLES = {
-  meeting: 'border-[#6C47FF]/25 bg-[#6C47FF]/10 text-[#c7b8ff]',
+  meeting: 'border-primary/25 bg-primary/10 text-[#c7b8ff]',
   reminder: 'border-sky-500/25 bg-sky-500/10 text-sky-200',
   focus: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-200',
 };
@@ -61,11 +73,17 @@ function readStorage<T>(key: string, fallback: T): T {
 function writeStorage<T>(key: string, value: T) {
   if (typeof window === 'undefined') return;
   window.localStorage.setItem(key, JSON.stringify(value));
-  window.dispatchEvent(new StorageEvent('storage', { key }));
+  window.dispatchEvent(new CustomEvent(PLANNER_STORAGE_SYNC_EVENT, { detail: { key } }));
+}
+
+function samePlannerPayload<T>(left: T, right: T) {
+  return JSON.stringify(left) === JSON.stringify(right);
 }
 
 function withoutLegacyPlannerSeed<T extends { id: string }>(items: T[]) {
-  return items.filter((item) => !['task-001', 'task-002', 'event-001', 'event-002'].includes(item.id));
+  return items.filter(
+    (item) => !['task-001', 'task-002', 'event-001', 'event-002'].includes(item.id)
+  );
 }
 
 function formatTime12h(time24: string) {
@@ -90,6 +108,29 @@ function formatReminderTime(reminderAt?: string) {
     hour: 'numeric',
     minute: '2-digit',
   });
+}
+
+function getTodayIso() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function formatPlannerDate(date?: string) {
+  if (!date) return '';
+  const parsed = new Date(`${date}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return date;
+  return parsed.toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
+function isTodayDate(date?: string) {
+  return Boolean(date && date === getTodayIso());
+}
+
+function isOverdueTask(task: TaskItem) {
+  return Boolean(task.dueDate && !task.completed && task.dueDate < getTodayIso());
 }
 
 function toTwelveHourParts(time24: string) {
@@ -135,7 +176,7 @@ function getNextQuarterHourTime() {
 function addMinutes(time24: string, minutesToAdd: number) {
   const [hour, minute] = time24.split(':').map(Number);
   const totalMinutes = hour * 60 + minute + minutesToAdd;
-  const normalized = ((totalMinutes % (24 * 60)) + (24 * 60)) % (24 * 60);
+  const normalized = ((totalMinutes % (24 * 60)) + 24 * 60) % (24 * 60);
   const nextHour = Math.floor(normalized / 60)
     .toString()
     .padStart(2, '0');
@@ -166,7 +207,7 @@ function TimePicker({
       <select
         value={parts.hour}
         onChange={(event) => update({ hour: event.target.value })}
-        className="rounded-2xl border border-white/10 bg-card px-3 py-3 text-sm text-foreground outline-none"
+        className="rounded-2xl border border-white/10 bg-[#020617]/80 px-3 py-3 text-sm text-white outline-none focus:border-[#8B6CFF]/50"
       >
         {hours.map((hour) => (
           <option key={hour} value={hour}>
@@ -177,7 +218,7 @@ function TimePicker({
       <select
         value={parts.minute}
         onChange={(event) => update({ minute: event.target.value })}
-        className="rounded-2xl border border-white/10 bg-card px-3 py-3 text-sm text-foreground outline-none"
+        className="rounded-2xl border border-white/10 bg-[#020617]/80 px-3 py-3 text-sm text-white outline-none focus:border-[#8B6CFF]/50"
       >
         {minutes.map((minute) => (
           <option key={minute} value={minute}>
@@ -188,7 +229,7 @@ function TimePicker({
       <select
         value={parts.period}
         onChange={(event) => update({ period: event.target.value })}
-        className="rounded-2xl border border-white/10 bg-card px-3 py-3 text-sm text-foreground outline-none"
+        className="rounded-2xl border border-white/10 bg-[#020617]/80 px-3 py-3 text-sm text-white outline-none focus:border-[#8B6CFF]/50"
       >
         <option value="AM">AM</option>
         <option value="PM">PM</option>
@@ -208,7 +249,7 @@ function showPlannerNotification(title: string, body: string) {
 
 async function sendDesktopPlannerNotification(title: string, body: string) {
   try {
-    await fetch('http://localhost:8000/api/system/notify', {
+    await fetch(apiUrl('/api/system/notify'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title, body }),
@@ -226,7 +267,26 @@ async function sendPlannerTestAlert() {
   );
 }
 
-export default function TaskCalendarPanel() {
+/**
+ * The planner: tasks and calendar, in a tab.
+ *
+ * Wrapped in `memo` and it takes no props, so this is the strongest form of the
+ * optimisation — with no props there is nothing to compare, and the component
+ * re-renders only when its own state changes.
+ *
+ * That matters because of where it is mounted. `ContextPanel` sits inside
+ * `ChatWorkspace`, which re-renders on every stats update — and `contextUnits` is
+ * `ceil(characters / 4)`, so a streaming reply pushes a new value roughly every
+ * four characters typed by the model. Without this, a 1000-character answer
+ * re-ran this 1055-line body and its eight `useMemo` comparisons a couple of
+ * hundred times while the user watched text appear, for a panel whose contents
+ * had not changed at all.
+ *
+ * The eight `useMemo`s inside are not a substitute for this: they skip
+ * recomputing derived lists, but the function body, the hook bookkeeping and the
+ * element tree still run on every parent render. `memo` is what stops the call.
+ */
+function TaskCalendarPanel() {
   const [activeTab, setActiveTab] = useState<'tasks' | 'calendar'>('tasks');
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
@@ -265,21 +325,30 @@ export default function TaskCalendarPanel() {
   }, [events, plannerLoaded]);
 
   useEffect(() => {
-    const syncPlannerState = (event?: StorageEvent) => {
-      if (
-        event?.key &&
-        event.key !== TASKS_STORAGE_KEY &&
-        event.key !== EVENTS_STORAGE_KEY
-      ) {
+    const syncPlannerState = (event?: Event) => {
+      const storageEvent = event instanceof StorageEvent ? event : undefined;
+      const customEvent = event instanceof CustomEvent ? event : undefined;
+      const key = storageEvent?.key || customEvent?.detail?.key;
+      if (key && key !== TASKS_STORAGE_KEY && key !== EVENTS_STORAGE_KEY) {
         return;
       }
 
-      setTasks(withoutLegacyPlannerSeed(readStorage(TASKS_STORAGE_KEY, DEFAULT_TASKS)));
-      setEvents(withoutLegacyPlannerSeed(readStorage(EVENTS_STORAGE_KEY, DEFAULT_EVENTS)));
+      setTasks((previous) => {
+        const next = withoutLegacyPlannerSeed(readStorage(TASKS_STORAGE_KEY, DEFAULT_TASKS));
+        return samePlannerPayload(previous, next) ? previous : next;
+      });
+      setEvents((previous) => {
+        const next = withoutLegacyPlannerSeed(readStorage(EVENTS_STORAGE_KEY, DEFAULT_EVENTS));
+        return samePlannerPayload(previous, next) ? previous : next;
+      });
     };
 
     window.addEventListener('storage', syncPlannerState);
-    return () => window.removeEventListener('storage', syncPlannerState);
+    window.addEventListener(PLANNER_STORAGE_SYNC_EVENT, syncPlannerState);
+    return () => {
+      window.removeEventListener('storage', syncPlannerState);
+      window.removeEventListener(PLANNER_STORAGE_SYNC_EVENT, syncPlannerState);
+    };
   }, []);
 
   useEffect(() => {
@@ -346,9 +415,6 @@ export default function TaskCalendarPanel() {
       window.removeEventListener(PLANNER_ACTION_EVENT, handlePlannerAction as EventListener);
   }, []);
 
-
-
-
   const requestBrowserNotificationPermission = async () => {
     if (typeof Notification === 'undefined') {
       toast.info('Browser notifications are unavailable here. Desktop alerts will still be used.');
@@ -358,7 +424,9 @@ export default function TaskCalendarPanel() {
     if (Notification.permission === 'granted') return true;
     const permission = await Notification.requestPermission();
     if (permission !== 'granted') {
-      toast.info('Browser notifications were not granted. Desktop alerts will still try to appear.');
+      toast.info(
+        'Browser notifications were not granted. Desktop alerts will still try to appear.'
+      );
       return true;
     }
     toast.success('Notifications enabled for planner reminders');
@@ -405,7 +473,11 @@ export default function TaskCalendarPanel() {
     setEventEndTime(event.endTime);
     setEventType(event.type);
     setEventReminder(event.reminderEnabled);
-    setEventReminderTime(event.reminderAt ? extractStoredTime(event.reminderAt, addMinutes(event.startTime, -15)) : addMinutes(event.startTime, -15));
+    setEventReminderTime(
+      event.reminderAt
+        ? extractStoredTime(event.reminderAt, addMinutes(event.startTime, -15))
+        : addMinutes(event.startTime, -15)
+    );
     setShowEventForm(true);
   };
 
@@ -420,10 +492,7 @@ export default function TaskCalendarPanel() {
       dueDate: taskDate || undefined,
       createdAt: new Date().toISOString(),
       reminderEnabled: taskReminder,
-      reminderAt:
-        taskReminder && taskDate
-          ? buildIsoDate(taskDate, taskReminderTime)
-          : undefined,
+      reminderAt: taskReminder && taskDate ? buildIsoDate(taskDate, taskReminderTime) : undefined,
       notified: false,
     };
 
@@ -459,9 +528,7 @@ export default function TaskCalendarPanel() {
       type: eventType,
       reminderEnabled: eventReminder,
       reminderAt:
-        eventReminder && eventDate
-          ? buildIsoDate(eventDate, eventReminderTime)
-          : undefined,
+        eventReminder && eventDate ? buildIsoDate(eventDate, eventReminderTime) : undefined,
       notified: false,
     };
 
@@ -478,72 +545,104 @@ export default function TaskCalendarPanel() {
 
   const pendingTasks = useMemo(() => tasks.filter((task) => !task.completed).length, [tasks]);
   const doneTasks = useMemo(() => tasks.filter((task) => task.completed).length, [tasks]);
+  const overdueTasks = useMemo(() => tasks.filter(isOverdueTask).length, [tasks]);
+  const dueTodayTasks = useMemo(
+    () => tasks.filter((task) => !task.completed && isTodayDate(task.dueDate)).length,
+    [tasks]
+  );
   const upcomingEvents = useMemo(
-    () => [...events].sort((a, b) => getEventStartDate(a).getTime() - getEventStartDate(b).getTime()),
+    () =>
+      [...events].sort((a, b) => getEventStartDate(a).getTime() - getEventStartDate(b).getTime()),
     [events]
   );
+  const todayEvents = useMemo(
+    () => upcomingEvents.filter((event) => isTodayDate(event.date)).length,
+    [upcomingEvents]
+  );
+  const nextEvent = upcomingEvents[0];
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="grid grid-cols-2 border-b border-border/80 bg-card/40">
-        {[
-          { key: 'tasks', label: 'To-Do', icon: CheckSquare, badge: pendingTasks },
-          { key: 'calendar', label: 'Calendar', icon: CalendarDays, badge: upcomingEvents.length },
-        ].map(({ key, label, icon: Icon, badge }) => (
-          <button
-            type="button"
-            key={key}
-            onClick={() => setActiveTab(key as 'tasks' | 'calendar')}
-            className={`flex items-center justify-center gap-2 px-3 py-3 text-sm font-medium transition-colors ${
-              activeTab === key
-                ? 'border-b-2 border-[#6C47FF] text-[#9B7FFF]'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            <Icon size={14} />
-            {label}
-            <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-mono tabular-nums text-muted-foreground">
-              {badge}
-            </span>
-          </button>
-        ))}
+    <div className="flex h-full flex-col text-white">
+      <div className="border-b border-white/10 bg-[#050b14]/80 px-4 py-4 sm:px-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">
+              Planner cockpit
+            </p>
+            <p className="mt-1 text-sm text-slate-300">
+              Tasks, reminders, alarms, and exact calendar windows.
+            </p>
+          </div>
+          <div className="grid w-full grid-cols-2 gap-2 sm:w-auto">
+            {[
+              { key: 'tasks', label: 'To-do', icon: CheckSquare, badge: pendingTasks },
+              {
+                key: 'calendar',
+                label: 'Calendar',
+                icon: CalendarDays,
+                badge: upcomingEvents.length,
+              },
+            ].map(({ key, label, icon: Icon, badge }) => (
+              <button
+                type="button"
+                key={key}
+                onClick={() => setActiveTab(key as 'tasks' | 'calendar')}
+                className={`flex items-center justify-center gap-2 rounded-2xl border px-4 py-3 text-sm font-semibold transition ${
+                  activeTab === key
+                    ? 'border-[#8B6CFF]/45 bg-primary/18 text-white shadow-[0_12px_28px_rgba(108,71,255,0.18)]'
+                    : 'border-white/10 bg-white/[0.045] text-slate-300 hover:bg-white/[0.075]'
+                }`}
+              >
+                <Icon size={15} />
+                {label}
+                <span className="rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-mono tabular-nums text-slate-200">
+                  {badge}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-4">
+      <div className="flex-1 overflow-y-auto px-4 py-5 sm:px-5">
         {activeTab === 'tasks' && (
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-2xl border border-[#6C47FF]/20 bg-gradient-to-br from-[#6C47FF]/12 to-transparent p-4">
-                <p className="text-2xl font-semibold text-[#c7b8ff]">{pendingTasks}</p>
-                <p className="mt-1 text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                  Pending
-                </p>
+          <div className="space-y-5">
+            <div className="grid gap-3 md:grid-cols-4">
+              <div className="rounded-3xl border border-primary/20 bg-primary/12 p-4">
+                <p className="text-3xl font-semibold text-[#c7b8ff]">{pendingTasks}</p>
+                <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-500">Pending</p>
               </div>
-              <div className="rounded-2xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/12 to-transparent p-4">
-                <p className="text-2xl font-semibold text-emerald-200">{doneTasks}</p>
-                <p className="mt-1 text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                  Completed
-                </p>
+              <div className="rounded-3xl border border-emerald-500/20 bg-emerald-500/10 p-4">
+                <p className="text-3xl font-semibold text-emerald-200">{doneTasks}</p>
+                <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-500">Completed</p>
+              </div>
+              <div className="rounded-3xl border border-amber-500/20 bg-amber-500/10 p-4">
+                <p className="text-3xl font-semibold text-amber-200">{dueTodayTasks}</p>
+                <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-500">Due today</p>
+              </div>
+              <div className="rounded-3xl border border-rose-500/20 bg-rose-500/10 p-4">
+                <p className="text-3xl font-semibold text-rose-200">{overdueTasks}</p>
+                <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-500">Overdue</p>
               </div>
             </div>
 
             {showTaskForm ? (
-              <div className="rounded-3xl border border-[#6C47FF]/25 bg-[#6C47FF]/8 p-4">
+              <div className="rounded-[28px] border border-[#8B6CFF]/25 bg-primary/10 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
                 <div className="space-y-3">
                   <input
                     value={taskTitle}
                     onChange={(event) => setTaskTitle(event.target.value)}
                     placeholder="What do you need to get done?"
-                    className="w-full rounded-2xl border border-white/10 bg-card px-4 py-3 text-sm text-foreground outline-none focus:border-[#6C47FF]/40"
+                    className="w-full rounded-2xl border border-white/10 bg-[#020617]/80 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-[#8B6CFF]/60"
                   />
 
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid gap-3 sm:grid-cols-2">
                     <select
                       value={taskPriority}
                       onChange={(event) =>
                         setTaskPriority(event.target.value as TaskItem['priority'])
                       }
-                      className="rounded-2xl border border-white/10 bg-card px-3 py-3 text-sm text-foreground outline-none"
+                      className="rounded-2xl border border-white/10 bg-[#020617]/80 px-3 py-3 text-sm text-white outline-none focus:border-[#8B6CFF]/50"
                     >
                       <option value="high">High priority</option>
                       <option value="medium">Medium priority</option>
@@ -553,45 +652,42 @@ export default function TaskCalendarPanel() {
                       type="date"
                       value={taskDate}
                       onChange={(event) => setTaskDate(event.target.value)}
-                      className="rounded-2xl border border-white/10 bg-card px-3 py-3 text-sm text-foreground outline-none"
+                      className="rounded-2xl border border-white/10 bg-[#020617]/80 px-3 py-3 text-sm text-white outline-none focus:border-[#8B6CFF]/50"
                     />
                   </div>
 
-                   <div
-                     onClick={async () => {
-                        if (!taskReminder) {
-                         await requestBrowserNotificationPermission();
-                         setTaskReminder(true);
-                         if (!taskReminderTime) setTaskReminderTime('09:00');
-                       } else {
-                         setTaskReminder(false);
-                       }
-                     }}
-                     className="flex cursor-pointer items-center justify-between rounded-2xl border border-white/10 bg-card px-3 py-3 text-sm text-foreground hover:bg-white/[0.02] transition-colors"
-                   >
+                  <div
+                    onClick={async () => {
+                      if (!taskReminder) {
+                        await requestBrowserNotificationPermission();
+                        setTaskReminder(true);
+                        if (!taskReminderTime) setTaskReminderTime('09:00');
+                      } else {
+                        setTaskReminder(false);
+                      }
+                    }}
+                    className="flex cursor-pointer items-center justify-between rounded-2xl border border-white/10 bg-[#020617]/70 px-3 py-3 text-sm text-white transition hover:bg-white/[0.05]"
+                  >
                     Reminder notification
-                      <div
-                        className={`relative h-6 w-11 flex-shrink-0 cursor-pointer rounded-full transition-colors duration-200 ease-in-out focus:outline-none ${
-                          taskReminder ? 'bg-emerald-500' : 'bg-muted'
+                    <div
+                      className={`relative h-6 w-11 flex-shrink-0 cursor-pointer rounded-full transition-colors duration-200 ease-in-out focus:outline-none ${
+                        taskReminder ? 'bg-emerald-500' : 'bg-muted'
+                      }`}
+                    >
+                      <span
+                        className={`pointer-events-none absolute left-1 top-1 h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                          taskReminder ? 'translate-x-5' : 'translate-x-0'
                         }`}
-                      >
-                        <span
-                          className={`pointer-events-none absolute left-1 top-1 h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                            taskReminder ? 'translate-x-5' : 'translate-x-0'
-                          }`}
-                        />
-                      </div>
+                      />
+                    </div>
                   </div>
 
-                   {taskReminder && taskDate && (
+                  {taskReminder && taskDate && (
                     <label className="block">
                       <span className="mb-2 block text-xs uppercase tracking-[0.18em] text-muted-foreground">
                         Custom reminder time
                       </span>
-                      <TimePicker
-                        value={taskReminderTime}
-                        onChange={setTaskReminderTime}
-                      />
+                      <TimePicker value={taskReminderTime} onChange={setTaskReminderTime} />
                     </label>
                   )}
 
@@ -599,7 +695,7 @@ export default function TaskCalendarPanel() {
                     <button
                       type="button"
                       onClick={addTask}
-                      className="inline-flex items-center gap-2 rounded-2xl bg-[#6C47FF] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#5A35EE]"
+                      className="inline-flex items-center gap-2 rounded-2xl bg-primary px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-primary-hover"
                     >
                       <Plus size={14} />
                       {editingTaskId ? 'Update task' : 'Save task'}
@@ -607,7 +703,7 @@ export default function TaskCalendarPanel() {
                     <button
                       type="button"
                       onClick={resetTaskForm}
-                      className="rounded-2xl border border-white/10 px-4 py-2.5 text-sm text-muted-foreground hover:bg-muted"
+                      className="rounded-2xl border border-white/10 px-4 py-2.5 text-sm text-slate-300 hover:bg-white/10"
                     >
                       Cancel
                     </button>
@@ -618,7 +714,7 @@ export default function TaskCalendarPanel() {
               <button
                 type="button"
                 onClick={() => setShowTaskForm(true)}
-                className="flex w-full items-center justify-center gap-2 rounded-3xl border border-dashed border-[#6C47FF]/30 bg-[#6C47FF]/6 px-4 py-3 text-sm font-medium text-[#b9a8ff] transition-colors hover:border-[#6C47FF]/50 hover:bg-[#6C47FF]/10"
+                className="flex w-full items-center justify-center gap-2 rounded-3xl border border-dashed border-[#8B6CFF]/35 bg-primary/10 px-4 py-4 text-sm font-semibold text-[#c7b8ff] transition hover:border-[#8B6CFF]/60 hover:bg-primary/16"
               >
                 <Plus size={14} />
                 Add to-do
@@ -626,151 +722,181 @@ export default function TaskCalendarPanel() {
             )}
 
             <div className="space-y-2">
-              {tasks.map((task) => (
-                <div
-                  key={task.id}
-                  className={`group rounded-3xl border p-4 transition-colors ${
-                    task.completed
-                      ? 'border-white/5 bg-card/40 opacity-70'
-                      : 'border-border/70 bg-card/70 hover:border-[#6C47FF]/25'
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setTasks((previous) => {
-                          const next = previous.map((item) =>
-                            item.id === task.id ? { ...item, completed: !item.completed } : item
-                          );
-                          writeStorage(TASKS_STORAGE_KEY, next);
-                          return next;
-                        })
-                      }
-                      className={`mt-0.5 flex h-5 w-5 items-center justify-center rounded-full border transition-colors ${
-                        task.completed
-                          ? 'border-emerald-500 bg-emerald-500 text-white'
-                          : 'border-border hover:border-[#6C47FF]'
-                      }`}
-                    >
-                      {task.completed && <Check size={11} />}
-                    </button>
-
-                    <div className="min-w-0 flex-1">
-                      <p
-                        className={`text-sm font-medium leading-6 ${
-                          task.completed ? 'text-muted-foreground line-through' : 'text-foreground'
-                        }`}
-                      >
-                        {task.title}
-                      </p>
-                      <div className="mt-2 flex flex-wrap items-center gap-2">
-                        <span
-                          className={`rounded-full border px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.18em] ${
-                            PRIORITY_STYLES[task.priority]
-                          }`}
-                        >
-                          {task.priority}
-                        </span>
-                        {task.dueDate && (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-1 text-[11px] text-muted-foreground">
-                            <Clock3 size={11} />
-                            {task.dueDate}
-                          </span>
-                        )}
-                        {task.reminderEnabled && (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2.5 py-1 text-[11px] text-amber-200">
-                            <Bell size={11} />
-                            {task.reminderAt ? `Notify ${formatReminderTime(task.reminderAt)}` : 'Notify'}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+              {tasks.length ? (
+                tasks.map((task) => (
+                  <div
+                    key={task.id}
+                    className={`group rounded-3xl border p-4 transition ${
+                      task.completed
+                        ? 'border-white/5 bg-white/[0.035] opacity-70'
+                        : 'border-white/10 bg-white/[0.06] hover:-translate-y-0.5 hover:border-[#8B6CFF]/35 hover:bg-white/[0.085]'
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
                       <button
                         type="button"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          editTask(task);
-                        }}
-                        className="rounded-xl p-2 text-muted-foreground hover:bg-muted hover:text-foreground"
-                      >
-                        <Pencil size={14} />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={(event) => {
-                          event.stopPropagation();
+                        onClick={() =>
                           setTasks((previous) => {
-                            const next = previous.filter((item) => item.id !== task.id);
+                            const next = previous.map((item) =>
+                              item.id === task.id ? { ...item, completed: !item.completed } : item
+                            );
                             writeStorage(TASKS_STORAGE_KEY, next);
                             return next;
-                          });
-                          toast.success('Task removed');
-                        }}
-                        className="rounded-xl p-2 text-muted-foreground hover:bg-muted hover:text-red-400"
+                          })
+                        }
+                        className={`mt-0.5 flex h-5 w-5 items-center justify-center rounded-full border transition-colors ${
+                          task.completed
+                            ? 'border-emerald-500 bg-emerald-500 text-white'
+                            : 'border-white/20 hover:border-[#8B6CFF]'
+                        }`}
                       >
-                        <Trash2 size={14} />
+                        {task.completed && <Check size={11} />}
                       </button>
+
+                      <div className="min-w-0 flex-1">
+                        <p
+                          className={`text-sm font-medium leading-6 ${
+                            task.completed
+                              ? 'text-muted-foreground line-through'
+                              : 'text-foreground'
+                          }`}
+                        >
+                          {task.title}
+                        </p>
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <span
+                            className={`rounded-full border px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.18em] ${
+                              PRIORITY_STYLES[task.priority]
+                            }`}
+                          >
+                            {task.priority}
+                          </span>
+                          {task.dueDate && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-1 text-[11px] text-muted-foreground">
+                              <Clock3 size={11} />
+                              {formatPlannerDate(task.dueDate)}
+                            </span>
+                          )}
+                          {task.reminderEnabled && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2.5 py-1 text-[11px] text-amber-200">
+                              <Bell size={11} />
+                              {task.reminderAt
+                                ? `Notify ${formatReminderTime(task.reminderAt)}`
+                                : 'Notify'}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            editTask(task);
+                          }}
+                          className="rounded-xl p-2 text-slate-400 hover:bg-white/10 hover:text-white"
+                        >
+                          <Pencil size={14} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setTasks((previous) => {
+                              const next = previous.filter((item) => item.id !== task.id);
+                              writeStorage(TASKS_STORAGE_KEY, next);
+                              return next;
+                            });
+                            toast.success('Task removed');
+                          }}
+                          className="rounded-xl p-2 text-slate-400 hover:bg-white/10 hover:text-red-300"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
                     </div>
                   </div>
+                ))
+              ) : (
+                <div className="rounded-3xl border border-dashed border-white/10 bg-white/[0.035] px-4 py-12 text-center">
+                  <CheckSquare size={28} className="mx-auto text-slate-500" />
+                  <p className="mt-3 text-sm font-semibold text-slate-300">No to-do items yet.</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Create one here or ask Akansha in chat to add it.
+                  </p>
                 </div>
-              ))}
+              )}
             </div>
           </div>
         )}
 
         {activeTab === 'calendar' && (
-          <div className="space-y-4">
-            <div className="rounded-3xl border border-sky-500/20 bg-gradient-to-br from-sky-500/10 via-[#6C47FF]/8 to-transparent p-4">
+          <div className="space-y-5">
+            <div className="grid gap-3 md:grid-cols-[1fr_1fr_2fr]">
+              <div className="rounded-3xl border border-sky-500/20 bg-sky-500/10 p-4">
+                <p className="text-3xl font-semibold text-sky-200">{upcomingEvents.length}</p>
+                <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-500">Scheduled</p>
+              </div>
+              <div className="rounded-3xl border border-emerald-500/20 bg-emerald-500/10 p-4">
+                <p className="text-3xl font-semibold text-emerald-200">{todayEvents}</p>
+                <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-500">Today</p>
+              </div>
+              <div className="rounded-3xl border border-white/10 bg-white/[0.055] p-4">
+                <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Next window</p>
+                <p className="mt-2 truncate text-sm font-semibold text-white">
+                  {nextEvent ? nextEvent.title : 'No calendar slots yet'}
+                </p>
+                <p className="mt-1 text-xs text-slate-400">
+                  {nextEvent
+                    ? `${formatPlannerDate(nextEvent.date)} - ${formatEventWindow(nextEvent)}`
+                    : 'Add an event or ask Akansha to schedule one.'}
+                </p>
+              </div>
+            </div>
+
+            <div className="rounded-3xl border border-sky-500/20 bg-gradient-to-br from-sky-500/10 via-primary/8 to-transparent p-4">
               <div className="flex items-center gap-2">
                 <Bell size={15} className="text-sky-300" />
-                <p className="text-sm font-medium text-foreground">Today's time windows</p>
+                <p className="text-sm font-medium text-white">Reminder channel</p>
                 <button
                   type="button"
                   onClick={() => {
                     void sendPlannerTestAlert();
                     toast.success('Test alert sent');
                   }}
-                  className="ml-auto inline-flex items-center gap-2 rounded-full border border-white/10 bg-card px-3 py-1.5 text-xs font-medium text-foreground hover:bg-white/[0.04]"
+                  className="ml-auto inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs font-medium text-white hover:bg-white/[0.1]"
                 >
                   <Bell size={12} />
                   Send test alert
                 </button>
               </div>
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                Calendar events now use a proper <span className="text-foreground">start time</span>{' '}
-                and <span className="text-foreground">end time</span>. Notifications trigger before
-                the start time without changing your to-do section.
+              <p className="mt-2 text-sm leading-6 text-slate-300">
+                Calendar events use a proper <span className="text-white">start time</span> and{' '}
+                <span className="text-white">end time</span>. Notifications trigger before the start
+                time without changing your to-do section.
               </p>
             </div>
 
             {showEventForm ? (
-              <div className="rounded-3xl border border-sky-500/20 bg-sky-500/8 p-4">
+              <div className="rounded-[28px] border border-sky-500/20 bg-sky-500/10 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
                 <div className="space-y-3">
                   <input
                     value={eventTitle}
                     onChange={(event) => setEventTitle(event.target.value)}
                     placeholder="Calendar event title"
-                    className="w-full rounded-2xl border border-white/10 bg-card px-4 py-3 text-sm text-foreground outline-none focus:border-sky-500/40"
+                    className="w-full rounded-2xl border border-white/10 bg-[#020617]/80 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-sky-400/50"
                   />
 
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className="grid gap-3 xl:grid-cols-[0.8fr_1fr_1fr]">
                     <input
                       type="date"
                       value={eventDate}
                       onChange={(event) => setEventDate(event.target.value)}
-                      className="rounded-2xl border border-white/10 bg-card px-3 py-3 text-sm text-foreground outline-none"
+                      className="rounded-2xl border border-white/10 bg-[#020617]/80 px-3 py-3 text-sm text-white outline-none focus:border-sky-400/50"
                     />
-                    <TimePicker
-                      value={eventStartTime}
-                      onChange={setEventStartTime}
-                    />
-                    <TimePicker
-                      value={eventEndTime}
-                      onChange={setEventEndTime}
-                    />
+                    <TimePicker value={eventStartTime} onChange={setEventStartTime} />
+                    <TimePicker value={eventEndTime} onChange={setEventEndTime} />
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
@@ -779,31 +905,33 @@ export default function TaskCalendarPanel() {
                       onChange={(event) =>
                         setEventType(event.target.value as CalendarEvent['type'])
                       }
-                      className="rounded-2xl border border-white/10 bg-card px-3 py-3 text-sm text-foreground outline-none"
+                      className="rounded-2xl border border-white/10 bg-[#020617]/80 px-3 py-3 text-sm text-white outline-none focus:border-sky-400/50"
                     >
                       <option value="meeting">Meeting</option>
                       <option value="reminder">Reminder</option>
                       <option value="focus">Focus block</option>
                     </select>
 
-                   <div
-                     onClick={async () => {
-                      if (!eventReminder) {
-                         await requestBrowserNotificationPermission();
-                         setEventReminder(true);
-                         if (!eventReminderTime && eventStartTime) {
-                           const [h, m] = eventStartTime.split(':').map(Number);
-                           const reminderMins = (h * 60 + m - 15 + 24 * 60) % (24 * 60);
-                           const reminderH = Math.floor(reminderMins / 60);
-                           const reminderM = reminderMins % 60;
-                           setEventReminderTime(`${reminderH.toString().padStart(2, '0')}:${reminderM.toString().padStart(2, '0')}`);
-                         }
-                       } else {
-                         setEventReminder(false);
-                       }
-                     }}
-                     className="flex cursor-pointer items-center justify-between rounded-2xl border border-white/10 bg-card px-3 py-3 text-sm text-foreground hover:bg-white/[0.02] transition-colors"
-                   >
+                    <div
+                      onClick={async () => {
+                        if (!eventReminder) {
+                          await requestBrowserNotificationPermission();
+                          setEventReminder(true);
+                          if (!eventReminderTime && eventStartTime) {
+                            const [h, m] = eventStartTime.split(':').map(Number);
+                            const reminderMins = (h * 60 + m - 15 + 24 * 60) % (24 * 60);
+                            const reminderH = Math.floor(reminderMins / 60);
+                            const reminderM = reminderMins % 60;
+                            setEventReminderTime(
+                              `${reminderH.toString().padStart(2, '0')}:${reminderM.toString().padStart(2, '0')}`
+                            );
+                          }
+                        } else {
+                          setEventReminder(false);
+                        }
+                      }}
+                      className="flex cursor-pointer items-center justify-between rounded-2xl border border-white/10 bg-[#020617]/70 px-3 py-3 text-sm text-white transition hover:bg-white/[0.05]"
+                    >
                       Notify me
                       <div
                         className={`relative h-6 w-11 flex-shrink-0 cursor-pointer rounded-full transition-colors duration-200 ease-in-out focus:outline-none ${
@@ -824,10 +952,7 @@ export default function TaskCalendarPanel() {
                       <span className="mb-2 block text-xs uppercase tracking-[0.18em] text-muted-foreground">
                         Custom reminder time
                       </span>
-                      <TimePicker
-                        value={eventReminderTime}
-                        onChange={setEventReminderTime}
-                      />
+                      <TimePicker value={eventReminderTime} onChange={setEventReminderTime} />
                     </label>
                   )}
 
@@ -835,7 +960,7 @@ export default function TaskCalendarPanel() {
                     <button
                       type="button"
                       onClick={addEvent}
-                      className="inline-flex items-center gap-2 rounded-2xl bg-sky-500 px-4 py-2.5 text-sm font-medium text-slate-950 transition-colors hover:bg-sky-400"
+                      className="inline-flex items-center gap-2 rounded-2xl bg-sky-400 px-4 py-2.5 text-sm font-semibold text-slate-950 transition-colors hover:bg-sky-300"
                     >
                       <Plus size={14} />
                       {editingEventId ? 'Update event' : 'Save event'}
@@ -843,7 +968,7 @@ export default function TaskCalendarPanel() {
                     <button
                       type="button"
                       onClick={resetEventForm}
-                      className="rounded-2xl border border-white/10 px-4 py-2.5 text-sm text-muted-foreground hover:bg-muted"
+                      className="rounded-2xl border border-white/10 px-4 py-2.5 text-sm text-slate-300 hover:bg-white/10"
                     >
                       <X size={14} className="inline" />
                     </button>
@@ -854,7 +979,7 @@ export default function TaskCalendarPanel() {
               <button
                 type="button"
                 onClick={() => setShowEventForm(true)}
-                className="flex w-full items-center justify-center gap-2 rounded-3xl border border-dashed border-sky-500/30 bg-sky-500/6 px-4 py-3 text-sm font-medium text-sky-200 transition-colors hover:border-sky-500/50 hover:bg-sky-500/10"
+                className="flex w-full items-center justify-center gap-2 rounded-3xl border border-dashed border-sky-400/35 bg-sky-500/10 px-4 py-4 text-sm font-semibold text-sky-200 transition hover:border-sky-400/60 hover:bg-sky-500/16"
               >
                 <Plus size={14} />
                 Add calendar slot
@@ -862,72 +987,84 @@ export default function TaskCalendarPanel() {
             )}
 
             <div className="space-y-2">
-              {upcomingEvents.map((event) => (
-                <div
-                  key={event.id}
-                  className="group rounded-3xl border border-border/70 bg-card/70 p-4 transition-colors hover:border-sky-500/25"
-                >
-                  <div className="flex items-start gap-3">
-                    <div
-                      className={`rounded-2xl border px-3 py-2 text-[11px] font-medium uppercase tracking-[0.2em] ${
-                        EVENT_STYLES[event.type]
-                      }`}
-                    >
-                      {event.type}
-                    </div>
+              {upcomingEvents.length ? (
+                upcomingEvents.map((event) => (
+                  <div
+                    key={event.id}
+                    className="group rounded-3xl border border-white/10 bg-white/[0.06] p-4 transition hover:-translate-y-0.5 hover:border-sky-400/35 hover:bg-white/[0.085]"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div
+                        className={`rounded-2xl border px-3 py-2 text-[11px] font-medium uppercase tracking-[0.2em] ${
+                          EVENT_STYLES[event.type]
+                        }`}
+                      >
+                        {event.type}
+                      </div>
 
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-foreground">{event.title}</p>
-                      <div className="mt-2 flex flex-wrap items-center gap-2">
-                        <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-1 text-[11px] text-muted-foreground">
-                          <CalendarDays size={11} />
-                          {event.date}
-                        </span>
-                        <span className="inline-flex items-center gap-1 rounded-full bg-slate-900/70 px-2.5 py-1 text-[11px] text-slate-200">
-                          <Clock3 size={11} />
-                          {formatEventWindow(event)}
-                        </span>
-                        {event.reminderEnabled && (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2.5 py-1 text-[11px] text-amber-200">
-                            <Bell size={11} />
-                            {event.reminderAt
-                              ? `Notify ${formatReminderTime(event.reminderAt)}`
-                              : 'Notification'}
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-white">{event.title}</p>
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-1 text-[11px] text-muted-foreground">
+                            <CalendarDays size={11} />
+                            {formatPlannerDate(event.date)}
                           </span>
-                        )}
+                          <span className="inline-flex items-center gap-1 rounded-full bg-slate-900/70 px-2.5 py-1 text-[11px] text-slate-200">
+                            <Clock3 size={11} />
+                            {formatEventWindow(event)}
+                          </span>
+                          {event.reminderEnabled && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2.5 py-1 text-[11px] text-amber-200">
+                              <Bell size={11} />
+                              {event.reminderAt
+                                ? `Notify ${formatReminderTime(event.reminderAt)}`
+                                : 'Notification'}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                        <button
+                          type="button"
+                          onClick={(clickEvent) => {
+                            clickEvent.stopPropagation();
+                            editEvent(event);
+                          }}
+                          className="rounded-xl p-2 text-slate-400 hover:bg-white/10 hover:text-white"
+                        >
+                          <Pencil size={14} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(clickEvent) => {
+                            clickEvent.stopPropagation();
+                            setEvents((previous) => {
+                              const next = previous.filter((item) => item.id !== event.id);
+                              writeStorage(EVENTS_STORAGE_KEY, next);
+                              return next;
+                            });
+                            toast.success('Calendar event removed');
+                          }}
+                          className="rounded-xl p-2 text-slate-400 hover:bg-white/10 hover:text-red-300"
+                        >
+                          <Trash2 size={14} />
+                        </button>
                       </div>
                     </div>
-
-                    <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                      <button
-                        type="button"
-                        onClick={(clickEvent) => {
-                          clickEvent.stopPropagation();
-                          editEvent(event);
-                        }}
-                        className="rounded-xl p-2 text-muted-foreground hover:bg-muted hover:text-foreground"
-                      >
-                        <Pencil size={14} />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={(clickEvent) => {
-                          clickEvent.stopPropagation();
-                          setEvents((previous) => {
-                            const next = previous.filter((item) => item.id !== event.id);
-                            writeStorage(EVENTS_STORAGE_KEY, next);
-                            return next;
-                          });
-                          toast.success('Calendar event removed');
-                        }}
-                        className="rounded-xl p-2 text-muted-foreground hover:bg-muted hover:text-red-400"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
                   </div>
+                ))
+              ) : (
+                <div className="rounded-3xl border border-dashed border-white/10 bg-white/[0.035] px-4 py-12 text-center">
+                  <CalendarDays size={28} className="mx-auto text-slate-500" />
+                  <p className="mt-3 text-sm font-semibold text-slate-300">
+                    No calendar slots yet.
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Add a time window here or ask Akansha to schedule one.
+                  </p>
                 </div>
-              ))}
+              )}
             </div>
           </div>
         )}
@@ -935,3 +1072,12 @@ export default function TaskCalendarPanel() {
     </div>
   );
 }
+
+/**
+ * The `displayName` is for the React DevTools profiler: a bare `memo(fn)` shows
+ * up as "Anonymous", which makes the one thing this wrapper exists to let you
+ * verify -- that it stopped re-rendering -- the hardest thing to find.
+ */
+TaskCalendarPanel.displayName = 'TaskCalendarPanel';
+
+export default memo(TaskCalendarPanel);

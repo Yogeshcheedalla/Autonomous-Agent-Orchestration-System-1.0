@@ -6,6 +6,7 @@ import { useTheme } from '@/components/ThemeProvider';
 import {
   Bell,
   Check,
+  Cpu,
   Download,
   Globe,
   Lock,
@@ -18,8 +19,10 @@ import {
   User,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { apiUrl } from '@/lib/apiBase';
+import ModelConnections from '@/components/settings/ModelConnections';
 
-type SettingsTab = 'profile' | 'appearance' | 'notifications' | 'security' | 'language';
+type SettingsTab = 'profile' | 'appearance' | 'models' | 'notifications' | 'security' | 'language';
 type VoiceLanguage = 'telugu_english' | 'english' | 'hindi';
 
 interface ProfileForm {
@@ -65,13 +68,36 @@ const DEFAULT_LOCAL_SETTINGS: LocalSettings = {
 const LOCAL_SETTINGS_KEY = 'akansha-settings-preferences';
 const APP_LANGUAGE_KEY = 'akansha_app_language';
 
+function stringValue(value: unknown, fallback = ''): string {
+  return typeof value === 'string' ? value : fallback;
+}
+
+function normalizeProfile(
+  rawProfile: Partial<Record<keyof ProfileForm, unknown>> | null | undefined
+): ProfileForm {
+  return {
+    full_name: stringValue(rawProfile?.full_name, DEFAULT_PROFILE.full_name),
+    email: stringValue(rawProfile?.email, DEFAULT_PROFILE.email),
+    bio: stringValue(rawProfile?.bio, DEFAULT_PROFILE.bio),
+    username: stringValue(rawProfile?.username, DEFAULT_PROFILE.username),
+    voice_language:
+      rawProfile?.voice_language === 'english' ||
+      rawProfile?.voice_language === 'hindi' ||
+      rawProfile?.voice_language === 'telugu_english'
+        ? rawProfile.voice_language
+        : DEFAULT_PROFILE.voice_language,
+  };
+}
+
 function readLocalSettings(): LocalSettings {
   if (typeof window === 'undefined') return DEFAULT_LOCAL_SETTINGS;
 
   try {
     const saved = localStorage.getItem(LOCAL_SETTINGS_KEY);
     const appLanguage = localStorage.getItem(APP_LANGUAGE_KEY);
-    const parsed = saved ? { ...DEFAULT_LOCAL_SETTINGS, ...JSON.parse(saved) } : DEFAULT_LOCAL_SETTINGS;
+    const parsed = saved
+      ? { ...DEFAULT_LOCAL_SETTINGS, ...JSON.parse(saved) }
+      : DEFAULT_LOCAL_SETTINGS;
     return appLanguage ? { ...parsed, appLanguage } : parsed;
   } catch {
     return DEFAULT_LOCAL_SETTINGS;
@@ -101,7 +127,7 @@ function Toggle({
         aria-checked={checked}
         onClick={() => onChange(!checked)}
         className={`relative h-7 w-12 rounded-full transition-colors ${
-          checked ? 'bg-[#6C47FF]' : 'bg-muted'
+          checked ? 'bg-primary' : 'bg-muted'
         }`}
       >
         <span
@@ -126,27 +152,27 @@ function SettingsContent() {
   const tabs = [
     { id: 'profile' as const, label: 'Profile', icon: User },
     { id: 'appearance' as const, label: 'Appearance', icon: Moon },
+    { id: 'models' as const, label: 'Models', icon: Cpu },
     { id: 'notifications' as const, label: 'Notifications', icon: Bell },
     { id: 'security' as const, label: 'Security', icon: Shield },
     { id: 'language' as const, label: 'Language', icon: Globe },
   ];
 
-  const profileDirty = useMemo(() => JSON.stringify(profile) !== JSON.stringify(savedProfile), [profile, savedProfile]);
+  const profileDirty = useMemo(
+    () => JSON.stringify(profile) !== JSON.stringify(savedProfile),
+    [profile, savedProfile]
+  );
 
   useEffect(() => {
     setLocalSettings(readLocalSettings());
 
-    void fetch('http://localhost:8000/api/profile')
+    void fetch(apiUrl('/api/profile'))
       .then((res) => {
         if (!res.ok) throw new Error('Could not load profile');
         return res.json();
       })
       .then((data) => {
-        const nextProfile = {
-          ...DEFAULT_PROFILE,
-          ...data.profile,
-          voice_language: data.profile?.voice_language ?? DEFAULT_PROFILE.voice_language,
-        };
+        const nextProfile = normalizeProfile(data.profile);
         setProfile(nextProfile);
         setSavedProfile(nextProfile);
       })
@@ -167,7 +193,7 @@ function SettingsContent() {
   const saveProfile = async (patch: Partial<ProfileForm> = profile) => {
     setSaving(true);
     try {
-      const res = await fetch('http://localhost:8000/api/profile', {
+      const res = await fetch(apiUrl('/api/profile'), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(patch),
@@ -175,15 +201,11 @@ function SettingsContent() {
 
       if (!res.ok) throw new Error('Profile save failed');
       const data = await res.json();
-      const nextProfile = {
-        ...DEFAULT_PROFILE,
-        ...data.profile,
-        voice_language: data.profile?.voice_language ?? DEFAULT_PROFILE.voice_language,
-      };
+      const nextProfile = normalizeProfile(data.profile);
       setProfile(nextProfile);
       setSavedProfile(nextProfile);
-      if (data.profile?.voice_language) {
-        window.localStorage.setItem('akansha_voice_language', data.profile.voice_language);
+      if (nextProfile.voice_language) {
+        window.localStorage.setItem('akansha_voice_language', nextProfile.voice_language);
       }
       toast.success('Settings saved');
     } catch {
@@ -203,15 +225,20 @@ function SettingsContent() {
     const permission = await Notification.requestPermission();
     const allowed = permission === 'granted';
     updateLocalSettings({ browserNotifications: allowed });
-    toast[allowed ? 'success' : 'error'](allowed ? 'Browser notifications enabled' : 'Browser notifications were not allowed');
+    toast[allowed ? 'success' : 'error'](
+      allowed ? 'Browser notifications enabled' : 'Browser notifications were not allowed'
+    );
   };
 
   const sendTestDesktopNotification = async () => {
     try {
-      const res = await fetch('http://localhost:8000/api/system/notify', {
+      const res = await fetch(apiUrl('/api/system/notify'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: 'Akansha notification test', body: 'Desktop notifications are working.' }),
+        body: JSON.stringify({
+          title: 'Akansha notification test',
+          body: 'Desktop notifications are working.',
+        }),
       });
 
       if (!res.ok) throw new Error('Notification failed');
@@ -240,7 +267,9 @@ function SettingsContent() {
       <div className="mx-auto max-w-4xl">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-foreground">Settings</h1>
-          <p className="mt-2 text-muted-foreground">Manage your account preferences and application settings.</p>
+          <p className="mt-2 text-muted-foreground">
+            Manage your account preferences and application settings.
+          </p>
         </div>
 
         <div className="flex flex-col gap-8 md:flex-row">
@@ -253,7 +282,7 @@ function SettingsContent() {
                   onClick={() => setActiveTab(tab.id)}
                   className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all ${
                     activeTab === tab.id
-                      ? 'bg-[#6C47FF] text-white shadow-lg shadow-[#6C47FF]/20'
+                      ? 'bg-primary text-white shadow-lg shadow-primary/20'
                       : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                   }`}
                 >
@@ -278,58 +307,78 @@ function SettingsContent() {
               <div className="space-y-6">
                 <div className="rounded-2xl border border-border bg-card/50 p-6 backdrop-blur-sm">
                   <h3 className="mb-6 flex items-center gap-2 text-lg font-semibold">
-                    <User size={18} className="text-[#6C47FF]" />
+                    <User size={18} className="text-primary" />
                     Profile Information
                   </h3>
                   <div className="space-y-4">
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                       <div className="space-y-2">
-                        <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground" htmlFor="settings-full-name">
+                        <label
+                          className="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+                          htmlFor="settings-full-name"
+                        >
                           Full Name
                         </label>
                         <input
                           id="settings-full-name"
                           type="text"
                           value={profile.full_name}
-                          onChange={(event) => setProfile((prev) => ({ ...prev, full_name: event.target.value }))}
-                          className="w-full rounded-xl border-0 bg-muted px-4 py-2.5 text-sm transition-all focus:ring-2 focus:ring-[#6C47FF]/40"
+                          onChange={(event) =>
+                            setProfile((prev) => ({ ...prev, full_name: event.target.value }))
+                          }
+                          className="w-full rounded-xl border-0 bg-muted px-4 py-2.5 text-sm transition-all focus:ring-2 focus:ring-primary/40"
                         />
                       </div>
                       <div className="space-y-2">
-                        <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground" htmlFor="settings-email">
+                        <label
+                          className="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+                          htmlFor="settings-email"
+                        >
                           Email Address
                         </label>
                         <input
                           id="settings-email"
                           type="email"
                           value={profile.email}
-                          onChange={(event) => setProfile((prev) => ({ ...prev, email: event.target.value }))}
-                          className="w-full rounded-xl border-0 bg-muted px-4 py-2.5 text-sm transition-all focus:ring-2 focus:ring-[#6C47FF]/40"
+                          onChange={(event) =>
+                            setProfile((prev) => ({ ...prev, email: event.target.value }))
+                          }
+                          className="w-full rounded-xl border-0 bg-muted px-4 py-2.5 text-sm transition-all focus:ring-2 focus:ring-primary/40"
                         />
                       </div>
                     </div>
                     <div className="space-y-2">
-                      <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground" htmlFor="settings-username">
+                      <label
+                        className="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+                        htmlFor="settings-username"
+                      >
                         Username
                       </label>
                       <input
                         id="settings-username"
                         type="text"
                         value={profile.username}
-                        onChange={(event) => setProfile((prev) => ({ ...prev, username: event.target.value }))}
-                        className="w-full rounded-xl border-0 bg-muted px-4 py-2.5 text-sm transition-all focus:ring-2 focus:ring-[#6C47FF]/40"
+                        onChange={(event) =>
+                          setProfile((prev) => ({ ...prev, username: event.target.value }))
+                        }
+                        className="w-full rounded-xl border-0 bg-muted px-4 py-2.5 text-sm transition-all focus:ring-2 focus:ring-primary/40"
                       />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground" htmlFor="settings-bio">
+                      <label
+                        className="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+                        htmlFor="settings-bio"
+                      >
                         Bio
                       </label>
                       <textarea
                         id="settings-bio"
                         rows={3}
                         value={profile.bio}
-                        onChange={(event) => setProfile((prev) => ({ ...prev, bio: event.target.value }))}
-                        className="w-full resize-none rounded-xl border-0 bg-muted px-4 py-2.5 text-sm transition-all focus:ring-2 focus:ring-[#6C47FF]/40"
+                        onChange={(event) =>
+                          setProfile((prev) => ({ ...prev, bio: event.target.value }))
+                        }
+                        className="w-full resize-none rounded-xl border-0 bg-muted px-4 py-2.5 text-sm transition-all focus:ring-2 focus:ring-primary/40"
                       />
                     </div>
                   </div>
@@ -337,7 +386,7 @@ function SettingsContent() {
                     <button
                       onClick={() => void saveProfile()}
                       disabled={saving || !profileDirty}
-                      className="flex items-center gap-2 rounded-xl bg-[#6C47FF] px-6 py-2.5 text-sm font-medium text-white shadow-lg shadow-[#6C47FF]/20 transition-all hover:bg-[#5A35EE] disabled:cursor-not-allowed disabled:opacity-55"
+                      className="flex items-center gap-2 rounded-xl bg-primary px-6 py-2.5 text-sm font-medium text-white shadow-lg shadow-primary/20 transition-all hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-55"
                     >
                       <Save size={16} />
                       {saving ? 'Saving...' : profileDirty ? 'Save Changes' : 'Saved'}
@@ -350,7 +399,10 @@ function SettingsContent() {
                     <Trash2 size={18} />
                     Danger Zone
                   </h3>
-                  <p className="mb-4 text-sm text-muted-foreground">This clears local app preferences on this device. Your backend profile is not deleted.</p>
+                  <p className="mb-4 text-sm text-muted-foreground">
+                    This clears local app preferences on this device. Your backend profile is not
+                    deleted.
+                  </p>
                   <button
                     onClick={() => {
                       localStorage.removeItem(LOCAL_SETTINGS_KEY);
@@ -369,7 +421,7 @@ function SettingsContent() {
               <div className="space-y-6">
                 <div className="rounded-2xl border border-border bg-card/50 p-6 backdrop-blur-sm">
                   <h3 className="mb-6 flex items-center gap-2 text-lg font-semibold">
-                    <Moon size={18} className="text-[#6C47FF]" />
+                    <Moon size={18} className="text-primary" />
                     Theme Preferences
                   </h3>
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -388,7 +440,9 @@ function SettingsContent() {
                             toast.success(`${option.label} theme applied`);
                           }}
                           className={`flex flex-col items-center gap-3 rounded-2xl border p-6 transition-all ${
-                            active ? 'border-[#6C47FF] bg-[#6C47FF]/10 text-[#6C47FF]' : 'border-border bg-muted/30 hover:border-[#6C47FF]/40'
+                            active
+                              ? 'border-primary bg-primary/10 text-primary'
+                              : 'border-border bg-muted/30 hover:border-primary/40'
                           }`}
                         >
                           <Icon size={24} />
@@ -398,25 +452,56 @@ function SettingsContent() {
                       );
                     })}
                   </div>
-                  <p className="mt-4 text-sm text-muted-foreground">Current resolved theme: {resolvedTheme}</p>
+                  <p className="mt-4 text-sm text-muted-foreground">
+                    Current resolved theme: {resolvedTheme}
+                  </p>
                 </div>
               </div>
             )}
 
+            {activeTab === 'models' && <ModelConnections />}
+
             {activeTab === 'notifications' && (
               <div className="rounded-2xl border border-border bg-card/50 p-6 backdrop-blur-sm">
                 <h3 className="mb-6 flex items-center gap-2 text-lg font-semibold">
-                  <Bell size={18} className="text-[#6C47FF]" />
+                  <Bell size={18} className="text-primary" />
                   Notification Preferences
                 </h3>
                 <div className="space-y-4">
-                  <Toggle checked={localSettings.browserNotifications} onChange={(next) => (next ? void requestBrowserNotifications() : updateLocalSettings({ browserNotifications: false }))} label="Browser notifications" description="Ask this browser for permission to show app alerts." />
-                  <Toggle checked={localSettings.desktopNotifications} onChange={(next) => updateLocalSettings({ desktopNotifications: next })} label="Desktop notifications" description="Allow Akansha to send Windows desktop alerts through the backend." />
-                  <Toggle checked={localSettings.reminderNotifications} onChange={(next) => updateLocalSettings({ reminderNotifications: next })} label="Planner reminder alerts" description="Show notifications when planner reminders become due." />
-                  <Toggle checked={localSettings.notificationSound} onChange={(next) => updateLocalSettings({ notificationSound: next })} label="Notification sound" description="Play a subtle sound for important alerts." />
+                  <Toggle
+                    checked={localSettings.browserNotifications}
+                    onChange={(next) =>
+                      next
+                        ? void requestBrowserNotifications()
+                        : updateLocalSettings({ browserNotifications: false })
+                    }
+                    label="Browser notifications"
+                    description="Ask this browser for permission to show app alerts."
+                  />
+                  <Toggle
+                    checked={localSettings.desktopNotifications}
+                    onChange={(next) => updateLocalSettings({ desktopNotifications: next })}
+                    label="Desktop notifications"
+                    description="Allow Akansha to send Windows desktop alerts through the backend."
+                  />
+                  <Toggle
+                    checked={localSettings.reminderNotifications}
+                    onChange={(next) => updateLocalSettings({ reminderNotifications: next })}
+                    label="Planner reminder alerts"
+                    description="Show notifications when planner reminders become due."
+                  />
+                  <Toggle
+                    checked={localSettings.notificationSound}
+                    onChange={(next) => updateLocalSettings({ notificationSound: next })}
+                    label="Notification sound"
+                    description="Play a subtle sound for important alerts."
+                  />
                 </div>
                 <div className="mt-6 flex justify-end">
-                  <button onClick={() => void sendTestDesktopNotification()} className="rounded-xl bg-[#6C47FF] px-5 py-2.5 text-sm font-medium text-white transition-all hover:bg-[#5A35EE]">
+                  <button
+                    onClick={() => void sendTestDesktopNotification()}
+                    className="rounded-xl bg-primary px-5 py-2.5 text-sm font-medium text-white transition-all hover:bg-primary-hover"
+                  >
                     Send Test Notification
                   </button>
                 </div>
@@ -427,18 +512,35 @@ function SettingsContent() {
               <div className="space-y-6">
                 <div className="rounded-2xl border border-border bg-card/50 p-6 backdrop-blur-sm">
                   <h3 className="mb-6 flex items-center gap-2 text-lg font-semibold">
-                    <Shield size={18} className="text-[#6C47FF]" />
+                    <Shield size={18} className="text-primary" />
                     Security Controls
                   </h3>
                   <div className="space-y-4">
-                    <Toggle checked={localSettings.twoFactor} onChange={(next) => updateLocalSettings({ twoFactor: next })} label="Two-step verification" description="Require an extra verification step on future sign-ins." />
-                    <Toggle checked={localSettings.loginAlerts} onChange={(next) => updateLocalSettings({ loginAlerts: next })} label="Login alerts" description="Notify you when a new sign-in is detected." />
+                    <Toggle
+                      checked={localSettings.twoFactor}
+                      onChange={(next) => updateLocalSettings({ twoFactor: next })}
+                      label="Two-step verification"
+                      description="Require an extra verification step on future sign-ins."
+                    />
+                    <Toggle
+                      checked={localSettings.loginAlerts}
+                      onChange={(next) => updateLocalSettings({ loginAlerts: next })}
+                      label="Login alerts"
+                      description="Notify you when a new sign-in is detected."
+                    />
                     <div className="rounded-xl border border-border bg-muted/20 p-4">
-                      <label className="text-sm font-semibold text-foreground" htmlFor="session-timeout">Session timeout</label>
+                      <label
+                        className="text-sm font-semibold text-foreground"
+                        htmlFor="session-timeout"
+                      >
+                        Session timeout
+                      </label>
                       <select
                         id="session-timeout"
                         value={localSettings.sessionTimeout}
-                        onChange={(event) => updateLocalSettings({ sessionTimeout: event.target.value })}
+                        onChange={(event) =>
+                          updateLocalSettings({ sessionTimeout: event.target.value })
+                        }
                         className="mt-3 w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm"
                       >
                         <option value="15">15 minutes</option>
@@ -452,16 +554,43 @@ function SettingsContent() {
 
                 <div className="rounded-2xl border border-border bg-card/50 p-6 backdrop-blur-sm">
                   <h3 className="mb-6 flex items-center gap-2 text-lg font-semibold">
-                    <Lock size={18} className="text-[#6C47FF]" />
+                    <Lock size={18} className="text-primary" />
                     Change Password
                   </h3>
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                    <input type="password" placeholder="Current password" value={passwordForm.current} onChange={(event) => setPasswordForm((prev) => ({ ...prev, current: event.target.value }))} className="rounded-xl border-0 bg-muted px-4 py-2.5 text-sm" />
-                    <input type="password" placeholder="New password" value={passwordForm.next} onChange={(event) => setPasswordForm((prev) => ({ ...prev, next: event.target.value }))} className="rounded-xl border-0 bg-muted px-4 py-2.5 text-sm" />
-                    <input type="password" placeholder="Confirm password" value={passwordForm.confirm} onChange={(event) => setPasswordForm((prev) => ({ ...prev, confirm: event.target.value }))} className="rounded-xl border-0 bg-muted px-4 py-2.5 text-sm" />
+                    <input
+                      type="password"
+                      placeholder="Current password"
+                      value={passwordForm.current}
+                      onChange={(event) =>
+                        setPasswordForm((prev) => ({ ...prev, current: event.target.value }))
+                      }
+                      className="rounded-xl border-0 bg-muted px-4 py-2.5 text-sm"
+                    />
+                    <input
+                      type="password"
+                      placeholder="New password"
+                      value={passwordForm.next}
+                      onChange={(event) =>
+                        setPasswordForm((prev) => ({ ...prev, next: event.target.value }))
+                      }
+                      className="rounded-xl border-0 bg-muted px-4 py-2.5 text-sm"
+                    />
+                    <input
+                      type="password"
+                      placeholder="Confirm password"
+                      value={passwordForm.confirm}
+                      onChange={(event) =>
+                        setPasswordForm((prev) => ({ ...prev, confirm: event.target.value }))
+                      }
+                      className="rounded-xl border-0 bg-muted px-4 py-2.5 text-sm"
+                    />
                   </div>
                   <div className="mt-6 flex justify-end">
-                    <button onClick={() => void savePassword()} className="rounded-xl bg-[#6C47FF] px-5 py-2.5 text-sm font-medium text-white transition-all hover:bg-[#5A35EE]">
+                    <button
+                      onClick={() => void savePassword()}
+                      className="rounded-xl bg-primary px-5 py-2.5 text-sm font-medium text-white transition-all hover:bg-primary-hover"
+                    >
                       Update Password
                     </button>
                   </div>
@@ -472,12 +601,14 @@ function SettingsContent() {
             {activeTab === 'language' && (
               <div className="rounded-2xl border border-border bg-card/50 p-6 backdrop-blur-sm">
                 <h3 className="mb-6 flex items-center gap-2 text-lg font-semibold">
-                  <Globe size={18} className="text-[#6C47FF]" />
+                  <Globe size={18} className="text-primary" />
                   Language Preferences
                 </h3>
                 <div className="space-y-5">
                   <div>
-                    <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">App Language</label>
+                    <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      App Language
+                    </label>
                     <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
                       {[
                         { id: 'english', label: 'English' },
@@ -488,7 +619,9 @@ function SettingsContent() {
                           key={option.id}
                           onClick={() => updateLocalSettings({ appLanguage: option.id })}
                           className={`rounded-xl border px-4 py-3 text-sm font-medium transition-all ${
-                            localSettings.appLanguage === option.id ? 'border-[#6C47FF] bg-[#6C47FF]/10 text-[#6C47FF]' : 'border-border bg-muted/20 hover:border-[#6C47FF]/40'
+                            localSettings.appLanguage === option.id
+                              ? 'border-primary bg-primary/10 text-primary'
+                              : 'border-border bg-muted/20 hover:border-primary/40'
                           }`}
                         >
                           {option.label}
@@ -498,7 +631,9 @@ function SettingsContent() {
                   </div>
 
                   <div>
-                    <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Voice Language</label>
+                    <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      Voice Language
+                    </label>
                     <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
                       {[
                         { id: 'telugu_english' as const, label: 'Telugu + English' },
@@ -512,7 +647,9 @@ function SettingsContent() {
                             setProfile((prev) => ({ ...prev, voice_language: option.id }));
                           }}
                           className={`rounded-xl border px-4 py-3 text-sm font-medium transition-all ${
-                            profile.voice_language === option.id ? 'border-[#6C47FF] bg-[#6C47FF]/10 text-[#6C47FF]' : 'border-border bg-muted/20 hover:border-[#6C47FF]/40'
+                            profile.voice_language === option.id
+                              ? 'border-primary bg-primary/10 text-primary'
+                              : 'border-border bg-muted/20 hover:border-primary/40'
                           }`}
                         >
                           {option.label}
@@ -522,7 +659,12 @@ function SettingsContent() {
                   </div>
 
                   <div>
-                    <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground" htmlFor="date-format">Date Format</label>
+                    <label
+                      className="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+                      htmlFor="date-format"
+                    >
+                      Date Format
+                    </label>
                     <select
                       id="date-format"
                       value={localSettings.dateFormat}
@@ -538,7 +680,11 @@ function SettingsContent() {
                 <div className="mt-8 flex justify-end gap-3">
                   <button
                     onClick={() => {
-                      const payload = JSON.stringify({ profile, preferences: localSettings }, null, 2);
+                      const payload = JSON.stringify(
+                        { profile, preferences: localSettings },
+                        null,
+                        2
+                      );
                       const blob = new Blob([payload], { type: 'application/json' });
                       const url = URL.createObjectURL(blob);
                       const link = document.createElement('a');
@@ -552,7 +698,10 @@ function SettingsContent() {
                     <Download size={16} />
                     Export
                   </button>
-                  <button onClick={() => void saveProfile({ voice_language: profile.voice_language })} className="rounded-xl bg-[#6C47FF] px-5 py-2.5 text-sm font-medium text-white transition-all hover:bg-[#5A35EE]">
+                  <button
+                    onClick={() => void saveProfile({ voice_language: profile.voice_language })}
+                    className="rounded-xl bg-primary px-5 py-2.5 text-sm font-medium text-white transition-all hover:bg-primary-hover"
+                  >
                     Save Language
                   </button>
                 </div>

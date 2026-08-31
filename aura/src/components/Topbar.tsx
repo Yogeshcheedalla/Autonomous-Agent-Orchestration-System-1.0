@@ -41,9 +41,12 @@ export default function Topbar({ onMobileMenuOpen }: TopbarProps) {
       </div>
 
       {/* Notifications */}
-      <button className="relative p-2 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors" aria-label="Notifications">
+      <button
+        className="relative p-2 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+        aria-label="Notifications"
+      >
         <Bell size={17} />
-        <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-[#6C47FF]" />
+        <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-primary" />
       </button>
 
       {/* Theme toggle */}
@@ -64,10 +67,13 @@ export default function Topbar({ onMobileMenuOpen }: TopbarProps) {
               {themeOptions.map(({ key, value, icon: Icon, label }) => (
                 <button
                   key={key}
-                  onClick={() => { setTheme(value); setThemeMenuOpen(false); }}
+                  onClick={() => {
+                    setTheme(value);
+                    setThemeMenuOpen(false);
+                  }}
                   className={`flex items-center gap-2 w-full px-3 py-2 text-sm transition-colors ${
                     theme === value
-                      ? 'text-[#6C47FF] bg-[#6C47FF]/5'
+                      ? 'text-primary bg-primary/5'
                       : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                   }`}
                 >

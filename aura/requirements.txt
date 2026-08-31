@@ -22,6 +22,13 @@ pyautogui
 pygetwindow
 pywinauto
 
+# Process inspection, so a launch can be checked rather than assumed. `Popen` not
+# raising is not evidence that an app opened -- `cmd /c start "" foo` succeeds for a
+# `foo` that does not exist, and the Start-menu fallback succeeds when the keystrokes
+# went nowhere. automation.py reads the process table to tell those apart, and
+# degrades to "could not confirm" if this is missing rather than claiming success.
+psutil>=5.9
+
 # Document Processing (PDF, PPTX)
 pymupdf
 python-pptx
@@ -34,3 +41,40 @@ edge-tts
 
 # System Notifications
 win10toast
+
+# Browser Automation (Playwright-based real browser driver)
+playwright>=1.40.0
+
+# Test utilities for async browser tests
+pytest-asyncio>=0.23.0
+pytest-html>=4.0.0
+
+# Local voice stack -- hearing, turn-taking and speech that never leave the box.
+# All three are ONNX/CTranslate2, so none of them pulls in torch or needs a GPU.
+#
+#   faster-whisper   the /api/voice/stt endpoint voice_engine.py promised, and it
+#                    also ships silero_vad_v6.onnx, so turn-taking reads the
+#                    waveform instead of guessing from a client stopwatch
+#   piper-tts        local synthesis; measured ~600 ms against edge-tts ~1200 ms
+#                    on the same sentence, and it still works with the WAN down
+#   python-multipart FastAPI needs it to accept the audio upload at all
+faster-whisper>=1.2.1
+onnxruntime>=1.20.0
+piper-tts>=1.3.0
+python-multipart>=0.0.9
+
+# Semantic memory -- meaning-based recall, so "my scooter needs servicing" finds
+# "the Activa is due for a service" instead of the nothing that LIKE returns.
+#
+# Both of these already arrive with faster-whisper, and are pinned here anyway
+# because semantic_memory.py imports them directly: a package you import is a
+# dependency you declare, whatever else happens to install it.
+#
+# chromadb is deliberately absent. Measured on this machine, same model and same
+# query, its collection.query() took 1334-2654 ms against 2.8-5.1 ms for the same
+# ONNX graph run directly -- it pads every input to the tokenizer's full 128
+# tokens and stacks HNSW, a second SQLite database and a telemetry client on the
+# query path. It also wanted ~30 packages including grpcio, kubernetes and six
+# opentelemetry modules. The model was worth keeping; the wrapper was not.
+tokenizers>=0.20.0
+huggingface_hub>=0.26.0

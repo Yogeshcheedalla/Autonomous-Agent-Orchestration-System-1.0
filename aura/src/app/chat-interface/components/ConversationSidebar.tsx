@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { memo, useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
   Plus,
@@ -20,6 +20,8 @@ import {
   writeSessionTitle,
 } from '@/hooks/chatSessionTitles';
 import { toast } from 'sonner';
+import { apiUrl } from '@/lib/apiBase';
+import type { ChatHistoryResponse } from '@/types/chatApi';
 
 interface HistoryItem {
   id: string;
@@ -33,6 +35,15 @@ interface ConversationSidebarProps {
   onSessionChange: (id: string) => void;
 }
 
+const TIMESTAMP_WITH_ZONE_PATTERN = /(?:Z|[+-]\d{2}:?\d{2})$/i;
+
+function parseConversationTimestamp(value: string | null | undefined): Date {
+  if (!value) return new Date();
+  const normalized = TIMESTAMP_WITH_ZONE_PATTERN.test(value) ? value : `${value}Z`;
+  const parsed = new Date(normalized);
+  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+}
+
 function startOfDay(date: Date) {
   const next = new Date(date);
   next.setHours(0, 0, 0, 0);
@@ -41,6 +52,7 @@ function startOfDay(date: Date) {
 
 function formatSidebarDate(date: Date) {
   return date.toLocaleDateString('en-IN', {
+    timeZone: 'Asia/Kolkata',
     day: '2-digit',
     month: 'short',
     year: 'numeric',
@@ -49,6 +61,7 @@ function formatSidebarDate(date: Date) {
 
 function formatConversationTime(date: Date) {
   return date.toLocaleTimeString('en-IN', {
+    timeZone: 'Asia/Kolkata',
     hour: '2-digit',
     minute: '2-digit',
     hour12: true,
@@ -83,7 +96,20 @@ function getConversationGroups(items: HistoryItem[]) {
   }));
 }
 
-export default function ConversationSidebar({
+/**
+ * Memoized at the bottom of this file.
+ *
+ * The sidebar is a sibling of `ChatThread` under `ChatWorkspace`, and
+ * `ChatWorkspace` re-renders on every `onStatsChange` -- which fires roughly once
+ * per four characters of a streaming reply, because contextUnits is
+ * ceil(characters / 4). Without the wrapper, answering one question re-ran this
+ * entire list, its date grouping and its fetch bookkeeping a few hundred times
+ * for a component whose contents did not change at all.
+ *
+ * All three props are stable: `activeSessionId` is a string, `onNewChat` is
+ * useCallback'd in the parent, and `onSessionChange` is a setState function.
+ */
+function ConversationSidebar({
   activeSessionId,
   onNewChat,
   onSessionChange,
@@ -95,8 +121,8 @@ export default function ConversationSidebar({
   const [draftTitle, setDraftTitle] = useState('');
 
   const loadHistory = React.useCallback(() => {
-    fetch('http://localhost:8000/api/chat')
-      .then((res) => res.json())
+    fetch(apiUrl('/api/chat'))
+      .then((res) => res.json() as Promise<ChatHistoryResponse>)
       .then((data) => {
         if (!data.messages) {
           setHistoryItems([]);
@@ -104,9 +130,9 @@ export default function ConversationSidebar({
         }
 
         const sessionsMap: Record<string, HistoryItem> = {};
-        data.messages.forEach((m: any) => {
+        data.messages.forEach((m) => {
           const sid = m.session_id || 'default';
-          const messageTimestamp = m.timestamp ? new Date(m.timestamp) : new Date();
+          const messageTimestamp = parseConversationTimestamp(m.timestamp);
           if (!sessionsMap[sid]) {
             sessionsMap[sid] = {
               id: sid,
@@ -175,9 +201,12 @@ export default function ConversationSidebar({
     if (!confirmed) return;
 
     try {
-      const response = await fetch(`http://localhost:8000/api/chat/session/${encodeURIComponent(conversation.id)}`, {
-        method: 'DELETE',
-      });
+      const response = await fetch(
+        apiUrl(`/api/chat/session/${encodeURIComponent(conversation.id)}`),
+        {
+          method: 'DELETE',
+        }
+      );
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
         throw new Error(payload.detail || 'Could not delete this conversation.');
@@ -237,7 +266,7 @@ export default function ConversationSidebar({
             placeholder="Search..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full bg-muted rounded-lg text-xs pl-7 pr-3 py-1.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-[#6C47FF]/40 border-0"
+            className="w-full bg-muted rounded-lg text-xs pl-7 pr-3 py-1.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 border-0"
           />
         </div>
       </div>
@@ -269,13 +298,13 @@ export default function ConversationSidebar({
                     onClick={() => onSessionChange(conv.id)}
                     className={`group flex items-start gap-2 px-2 py-2 rounded-lg cursor-pointer transition-colors mb-0.5 ${
                       activeSessionId === conv.id
-                        ? 'bg-[#6C47FF]/10 text-[#6C47FF] border border-[#6C47FF]/20'
+                        ? 'bg-primary/10 text-primary border border-primary/20'
                         : 'hover:bg-muted text-muted-foreground hover:text-foreground border border-transparent'
                     }`}
                   >
                     <MessageSquare
                       size={12}
-                      className={`mt-1 shrink-0 ${activeSessionId === conv.id ? 'text-[#6C47FF]' : 'text-[#6C47FF]/70'}`}
+                      className={`mt-1 shrink-0 ${activeSessionId === conv.id ? 'text-primary' : 'text-primary/70'}`}
                     />
                     <div className="flex-1 min-w-0">
                       {editingSessionId === conv.id ? (
@@ -290,7 +319,7 @@ export default function ConversationSidebar({
                                 cancelRename();
                               }
                             }}
-                            className="w-full bg-muted rounded-md px-2 py-1 text-xs text-foreground border border-[#6C47FF]/30 focus:outline-none focus:ring-1 focus:ring-[#6C47FF]/50"
+                            className="w-full bg-muted rounded-md px-2 py-1 text-xs text-foreground border border-primary/30 focus:outline-none focus:ring-1 focus:ring-primary/50"
                           />
                           <button
                             type="submit"
@@ -359,3 +388,7 @@ export default function ConversationSidebar({
     </div>
   );
 }
+
+ConversationSidebar.displayName = 'ConversationSidebar';
+
+export default memo(ConversationSidebar);

@@ -51,28 +51,13 @@
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",
-    "@react-three/drei": "^10.7.7",
-    "@react-three/fiber": "^9.6.0",
-    "@tailwindcss/forms": "^0.5.10",
-    "@tailwindcss/typography": "^0.5.16",
-    "express": "^5.2.1",
-    "express-rate-limit": "^8.4.0",
-    "framer-motion": "12.38.0",
-    "jsonwebtoken": "^9.0.3",
     "lucide-react": "^1.7.0",
     "next": "15.1.11",
-    "rate-limit-redis": "^4.3.1",
     "react": "19.0.3",
     "react-dom": "19.0.3",
-    "react-hook-form": "^7.73.1",
-    "recharts": "^2.15.2",
-    "redis": "^5.12.1",
-    "sonner": "^1.7.4",
-    "three": "^0.184.0"
+    "sonner": "^1.7.4"
   },
   "devDependencies": {
-    "@eslint/eslintrc": "^3",
-    "@netlify/plugin-nextjs": "^5.11.1",
     "@types/node": "^20",
     "@types/react": "19.0.3",
     "@types/react-dom": "19.0.3",
@@ -88,7 +73,6 @@
     "postcss": "8.4.8",
     "prettier": "^3.5.3",
     "tailwindcss": "3.4.6",
-    "tailwindcss-animate": "^1.0.7",
     "typescript": "^5"
   }
 }

@@ -21,7 +21,6 @@ import {
   Zap,
   CalendarDays,
   PlugZap,
-  Globe,
   Trash2,
   LogOut,
 } from 'lucide-react';
@@ -31,6 +30,8 @@ import {
   deleteSessionTitle,
   getSessionTitle,
 } from '@/hooks/chatSessionTitles';
+import { apiUrl } from '@/lib/apiBase';
+import type { ChatHistoryResponse } from '@/types/chatApi';
 
 interface SidebarProps {
   collapsed: boolean;
@@ -78,17 +79,21 @@ const navItems = [
   },
   {
     key: 'nav-integrations',
-    href: '/channel-integrations',
+    href: '/connections',
     icon: PlugZap,
-    label: 'Channels',
-    badge: null,
+    // Not a count. It said "27 apps", which was the length of a hardcoded registry
+    // and is now wrong in both directions: the catalog declares 29, this machine has
+    // 63 installed applications the scan can adopt, and any website can be connected
+    // besides. A number here would have to be re-typed every time the page grows.
+    label: 'Connections',
+    badge: 'Any app',
   },
   {
-    key: 'nav-automation',
-    href: '/browser-automation',
-    icon: Globe,
-    label: 'Automation',
-    badge: null,
+    key: 'nav-task-automations',
+    href: '/task-automations',
+    icon: Zap,
+    label: 'Task Studio',
+    badge: 'Canvas',
   },
   {
     key: 'nav-cognitive-dashboard',
@@ -149,7 +154,7 @@ export default function Sidebar({
   useEffect(() => {
     const fetchProfile = async () => {
       try {
-        const res = await fetch('http://localhost:8000/api/profile');
+        const res = await fetch(apiUrl('/api/profile'));
         if (res.ok) {
           const data = await res.json();
           setProfile(data.profile);
@@ -163,8 +168,8 @@ export default function Sidebar({
 
   useEffect(() => {
     const loadRecentConversations = () => {
-      fetch('http://localhost:8000/api/chat')
-        .then((res) => res.json())
+      fetch(apiUrl('/api/chat'))
+        .then((res) => res.json() as Promise<ChatHistoryResponse>)
         .then((data) => {
           if (!data.messages) {
             setRecentConversations([]);
@@ -173,7 +178,7 @@ export default function Sidebar({
 
           const sessionsMap: Record<string, RecentConversation> = {};
 
-          data.messages.forEach((message: any) => {
+          data.messages.forEach((message) => {
             const sessionId = message.session_id || 'default';
             const messageTimestamp = message.timestamp ? new Date(message.timestamp) : new Date();
             const fallbackTitle =
@@ -187,7 +192,13 @@ export default function Sidebar({
               sessionsMap[sessionId] = {
                 id: sessionId,
                 title: nextTitle,
-                model: message.model || 'Akansha',
+                // Not `message.model || 'Akansha'`. GET /api/chat does not return a
+                // `model` field and `chat_messages` has no such column, so that
+                // read was always undefined and the fallback always won -- the
+                // `any` on this row was the only reason it looked live. Surfacing
+                // a real per-message model needs a column and a migration, which
+                // is a feature, not this cleanup.
+                model: 'Akansha',
                 starred: false,
                 timestamp: messageTimestamp,
               };
@@ -255,18 +266,7 @@ export default function Sidebar({
 
   const reliableNavigate = (href: string) => {
     if (!href || currentPath === href) return false;
-
-    if (navigationFallbackRef.current) {
-      window.clearTimeout(navigationFallbackRef.current);
-    }
-
     router.push(href);
-    navigationFallbackRef.current = window.setTimeout(() => {
-      if (window.location.pathname !== href) {
-        window.location.href = href;
-      }
-    }, 250);
-
     return true;
   };
 
@@ -286,7 +286,7 @@ export default function Sidebar({
 
     try {
       const response = await fetch(
-        `http://localhost:8000/api/chat/session/${encodeURIComponent(conversation.id)}`,
+        apiUrl(`/api/chat/session/${encodeURIComponent(conversation.id)}`),
         { method: 'DELETE' }
       );
       if (!response.ok) {
@@ -335,32 +335,55 @@ export default function Sidebar({
     onClose?.();
   };
 
-  const handleNavClick = (
-    event: React.MouseEvent<HTMLElement>,
-    label: string,
-    href: string
-  ) => {
-    event.preventDefault();
-    event.stopPropagation();
+  const handleNavClick = (event: React.MouseEvent<HTMLElement>, label: string, href: string) => {
+    // Modified clicks belong to the browser: ctrl/cmd-click opens a background
+    // tab, shift-click a new window. The old handler called preventDefault()
+    // unconditionally, so none of those worked on any sidebar link.
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
+      return;
+    }
 
+    // These three do not go to their own href — they reset the thread or open a
+    // panel — so they keep the interception.
     if (label === 'New Chat') {
+      event.preventDefault();
+      event.stopPropagation();
       openChat({ newChat: true });
       return;
     }
 
     if (label === 'Chat') {
+      event.preventDefault();
+      event.stopPropagation();
       openChat();
       return;
     }
 
     if (label === 'Prompts') {
+      event.preventDefault();
+      event.stopPropagation();
       openChat({ promptLibrary: true });
       return;
     }
 
-    if (!reliableNavigate(href)) {
+    // Already here: there is nothing to navigate to, so swallow the click.
+    if (currentPath === href) {
+      event.preventDefault();
+      event.stopPropagation();
       toast.success(`${label} is already open`, { duration: 900 });
+      onClose?.();
+      return;
     }
+
+    // Everything else navigates, and `<Link href>` is what does it. This used to
+    // be preventDefault() + router.push(href), which made an imperative push the
+    // *only* way out of the current route — and when that push silently no-ops
+    // the sidebar just stops working, with nothing to fall back on. Measured on a
+    // freshly loaded page: clicking Settings from /chat-interface left the path
+    // at /chat-interface, with the click handled by React (no reload, no
+    // navigation) and both the HTML and RSC responses for /settings returning
+    // 200. Link performs the same prefetched client transition without that
+    // single point of failure.
     onClose?.();
   };
 
@@ -433,7 +456,7 @@ export default function Sidebar({
           className={`
             w-full
             flex items-center gap-2 rounded-lg transition-all duration-150
-            bg-[#6C47FF] hover:bg-[#5A35EE] text-white font-medium text-sm
+            bg-primary hover:bg-primary-hover text-white font-medium text-sm
             active:scale-95
             ${collapsed ? 'justify-center p-2' : 'px-3 py-2'}
           `}
@@ -442,6 +465,33 @@ export default function Sidebar({
           <Plus size={16} />
           {!collapsed && <span>New Chat</span>}
         </button>
+      </div>
+
+      {/* Voice Quick-Launch Button */}
+      <div className={`px-2 pb-2 border-b border-[hsl(var(--sidebar-border))]`}>
+        <Link
+          href="/voice-assistant"
+          prefetch={true}
+          onClick={() => {
+            onClose?.();
+          }}
+          className={`
+            w-full flex items-center gap-2 rounded-lg transition-all duration-150
+            bg-gradient-to-r from-cyan-600/20 to-indigo-600/20
+            border border-cyan-700/40 hover:border-cyan-400/70
+            hover:from-cyan-600/30 hover:to-indigo-600/30
+            text-cyan-400 hover:text-cyan-300 font-medium text-sm
+            active:scale-95
+            ${collapsed ? 'justify-center p-2' : 'px-3 py-2'}
+          `}
+          title="Voice Agent"
+        >
+          <Mic size={16} className="shrink-0 drop-shadow-[0_0_6px_rgba(34,211,238,0.8)]" />
+          {!collapsed && <span className="flex-1 truncate tracking-wide">Voice Agent</span>}
+          {!collapsed && (
+            <span className="text-[10px] font-mono text-cyan-600 animate-pulse">●</span>
+          )}
+        </Link>
       </div>
 
       {/* Nav Items */}
@@ -455,7 +505,7 @@ export default function Sidebar({
             transition-all duration-150
             ${
               isActive
-                ? 'bg-[#6C47FF]/10 text-[#6C47FF] dark:bg-[#6C47FF]/15 dark:text-[#9B7FFF]'
+                ? 'bg-primary/10 text-primary dark:bg-primary/15 dark:text-[#9B7FFF]'
                 : 'text-muted-foreground hover:bg-muted hover:text-foreground'
             }
             ${collapsed ? 'justify-center' : ''}
@@ -494,7 +544,7 @@ export default function Sidebar({
             <Link
               key={item.key}
               href={item.href}
-              prefetch={false}
+              prefetch={true}
               onClick={(event) => handleNavClick(event, item.label, item.href)}
               title={collapsed ? item.label : undefined}
               className={navClassName}
@@ -522,7 +572,7 @@ export default function Sidebar({
                 placeholder="Search chats..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-muted border-0 rounded-md text-xs pl-7 pr-3 py-1.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-[#6C47FF]/50"
+                className="w-full bg-muted border-0 rounded-md text-xs pl-7 pr-3 py-1.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
               />
             </div>
           </div>
@@ -532,7 +582,7 @@ export default function Sidebar({
                 role="button"
                 tabIndex={0}
                 key={conv.id}
-                onClick={(event) => {
+                onClick={() => {
                   if (currentPath === '/chat-interface') {
                     window.dispatchEvent(
                       new CustomEvent('akansha-select-session', { detail: conv.id })
@@ -593,7 +643,6 @@ export default function Sidebar({
       <div className={`border-t border-[hsl(var(--sidebar-border))] p-2 space-y-0.5`}>
         {[
           { key: 'nav-memory', icon: MemoryStick, label: 'Memory' },
-          { key: 'nav-api', icon: Cpu, label: 'API Keys', href: '/api-keys' },
           { key: 'nav-settings', icon: Settings, label: 'Settings', href: '/settings' },
         ].map(({ key, icon: Icon, label, href }) =>
           href ? (
@@ -629,12 +678,14 @@ export default function Sidebar({
         <div
           className={`flex items-center justify-between px-2.5 py-2 mt-1 rounded-lg hover:bg-muted transition-colors ${collapsed ? 'flex-col gap-2' : ''}`}
         >
-          <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#6C47FF] to-[#00C9A7] flex items-center justify-center text-white text-xs font-semibold shrink-0">
+          <div className="w-7 h-7 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center text-white text-xs font-semibold shrink-0">
             A
           </div>
           {!collapsed && (
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-medium text-foreground truncate">{profile?.username || profile?.full_name || 'Arjun Mehta'}</p>
+              <p className="text-xs font-medium text-foreground truncate">
+                {profile?.username || profile?.full_name || 'Arjun Mehta'}
+              </p>
               <p className="text-xs text-muted-foreground truncate">Pro Plan</p>
             </div>
           )}

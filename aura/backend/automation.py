@@ -3,6 +3,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 from pathlib import Path
@@ -22,6 +23,46 @@ from pptx.util import Inches
 
 pyautogui.FAILSAFE = False
 
+
+def probe_gui_control() -> dict[str, object]:
+    """Ask the GUI stack whether it can currently do anything.
+
+    Every click, keystroke and scroll in this module goes through pyautogui, and
+    finding the window to send them to goes through pygetwindow. Both import fine
+    on a machine with no usable session and only fail when actually used — so the
+    permission flags in `main.py` could read "six active" while not one of them
+    could be carried out.
+
+    Lives here rather than in `main.py` because this is the module that owns the
+    GUI imports; the API layer should be able to report liveness without pulling
+    pyautogui into its own namespace.
+
+    Never raises. A caller asking "can you control the desktop?" wants an answer,
+    not an exception.
+    """
+    screen: dict[str, int] | None = None
+    screen_error: str | None = None
+    try:
+        size = pyautogui.size()
+        screen = {"width": int(size[0]), "height": int(size[1])}
+    except Exception as exc:  # pragma: no cover - depends on the host session
+        screen_error = f"{type(exc).__name__}: {exc}"
+
+    window_manager = False
+    try:
+        # A `None` return is legitimate (nothing focused) and still proves the
+        # window layer answers, so only an exception counts as a failure.
+        gw.getActiveWindow()
+        window_manager = True
+    except Exception:  # pragma: no cover - depends on the host session
+        window_manager = False
+
+    return {
+        "screen": screen,
+        "screen_error": screen_error,
+        "window_manager": window_manager,
+    }
+
 BROWSER_TITLE_TOKENS = ("youtube", "google", "chrome", "brave", "edge", "firefox", "browser")
 
 
@@ -33,6 +74,14 @@ APP_LAUNCH_COMMANDS: dict[str, list[str]] = {
     "explorer": ["explorer.exe"],
     "vscode": ["Code.exe"],
     "visual studio code": ["Code.exe"],
+    "antigravity": [
+        "Antigravity IDE.exe",
+        r"C:\Users\LENOVO\AppData\Local\Programs\Antigravity IDE\Antigravity IDE.exe",
+    ],
+    "antigravity ide": [
+        "Antigravity IDE.exe",
+        r"C:\Users\LENOVO\AppData\Local\Programs\Antigravity IDE\Antigravity IDE.exe",
+    ],
     "chrome": [
         "chrome.exe",
         r"C:\Program Files\Google\Chrome\Application\chrome.exe",
@@ -109,6 +158,8 @@ START_MENU_FRIENDLY_NAMES: dict[str, str] = {
     "explorer": "File Explorer",
     "vscode": "Visual Studio Code",
     "visual studio code": "Visual Studio Code",
+    "antigravity": "Antigravity IDE",
+    "antigravity ide": "Antigravity IDE",
     "chrome": "Google Chrome",
     "google chrome": "Google Chrome",
     "brave": "Brave",
@@ -143,6 +194,8 @@ APP_REGISTRY_EXECUTABLES: dict[str, list[str]] = {
     "google chrome": ["chrome.exe"],
     "brave": ["brave.exe"],
     "brave browser": ["brave.exe"],
+    "antigravity": ["Antigravity IDE.exe"],
+    "antigravity ide": ["Antigravity IDE.exe"],
     "word": ["winword.exe"],
     "excel": ["excel.exe"],
     "powerpoint": ["powerpnt.exe"],
@@ -175,6 +228,9 @@ APP_NAME_ALIASES: dict[str, str] = {
     "whatsapp web": "whatsapp",
     "microsoft edge desktop": "microsoft edge",
     "edge desktop": "microsoft edge",
+    "antigravity desktop app": "antigravity",
+    "antigravity desktop": "antigravity",
+    "antigravity app": "antigravity",
 }
 
 AMMA_ONLY_CONTACT_ALIASES: dict[str, str] = {
@@ -662,6 +718,138 @@ def _resolve_launch_commands(app_name: str, commands: list[str]) -> list[str]:
     return resolved
 
 
+#: How long to wait for a launched app to show up in the process table. Chosen to
+#: be long enough for an installed desktop app to register and short enough that a
+#: voice turn does not stall on it; an app slower than this is reported as
+#: unconfirmed rather than as failed.
+_LAUNCH_CONFIRM_S = 3.0
+_LAUNCH_POLL_S = 0.25
+
+
+def _expected_process_names(app_name: str) -> set[str]:
+    """The executable basenames that opening `app_name` should produce.
+
+    Derived from the same `APP_LAUNCH_COMMANDS` row the launcher uses, so the two
+    cannot drift: every `.exe` in the row is a name worth looking for, and a
+    `start msedge` entry contributes `msedge.exe`. Protocol handlers (`whatsapp:`,
+    `tg:`) and `shell:AppsFolder\\...` ids name no executable, which is why the row
+    for those apps also lists the exe -- and why an empty set here means "cannot be
+    checked" rather than "will not run".
+    """
+    normalized = _normalize_app_name(app_name)
+    if not normalized:
+        return set()
+    names: set[str] = set()
+    for command in APP_LAUNCH_COMMANDS.get(normalized, [normalized]):
+        candidate = command.strip()
+        if candidate.lower().startswith("start "):
+            candidate = candidate[6:].strip()
+        if candidate.lower().startswith("shell:") or candidate.endswith(":"):
+            continue
+        base = Path(candidate).name.lower()
+        if not base:
+            continue
+        names.add(base if base.endswith(".exe") else f"{base}.exe")
+    return names
+
+
+def _running_process_names() -> set[str] | None:
+    """Lowercased names of every running process, or None if we cannot look.
+
+    None is a third answer and it matters: "no matching process" and "could not
+    enumerate processes" must not collapse into the same report, because the first
+    means the launch failed and the second means nothing at all.
+    """
+    try:
+        import psutil
+    except Exception:  # pragma: no cover - psutil is present on this host
+        return None
+    try:
+        return {(proc.info.get("name") or "").lower() for proc in psutil.process_iter(["name"])}
+    except Exception:  # pragma: no cover - depends on OS permissions
+        return None
+
+
+def _launch_outcome(
+    label: str,
+    expected: set[str],
+    before: set[str] | None,
+    *,
+    timeout_s: float | None = None,
+) -> dict[str, object]:
+    """Did the app actually open? The answer the reply is allowed to make.
+
+    This exists because `subprocess.Popen` not raising was being reported as
+    "Opened Chrome." It is a much weaker claim than that: `cmd /c start "" foo`
+    succeeds whether or not `foo` exists, a `shell:AppsFolder` id that no longer
+    matches an installed package fails silently, and the Start-menu fallback --
+    press Win, type a name, press Enter -- returns exactly the same "success" when
+    the search box never got focus and the name went into whatever did. Every one of
+    those produced a reply saying the task was done while nothing had opened, which
+    is the defect this function is here to stop.
+
+    Three outcomes, kept distinct on purpose:
+
+    * a matching process is running -> success, and say whether it was already
+      running before the launch, because "it was open already" is a different fact
+      from "I opened it" and the second is the one the user asked for;
+    * nothing matching is running after `timeout_s` -> **failure**, said plainly;
+    * nothing to check against, or no way to check -> success with the confirmation
+      withheld in words. Claiming failure here would be its own false report.
+
+    `timeout_s` defaults to `None` rather than to the constant so that the constant
+    stays the single place the wait is set -- a default bound at import time cannot
+    be changed by a test or by a caller that shortens it.
+    """
+    if timeout_s is None:
+        timeout_s = _LAUNCH_CONFIRM_S
+    if not expected or before is None:
+        return {
+            "success": True,
+            "message": f"Asked Windows to open {label}.",
+            "verified": False,
+            "note": (
+                "Whether its window actually came up could not be confirmed from here, "
+                "so treat this as sent rather than done."
+            ),
+        }
+
+    already = bool(expected & before)
+    deadline = time.time() + timeout_s
+    while True:
+        current = _running_process_names()
+        if current is None:  # pragma: no cover - psutil went away mid-call
+            break
+        if expected & current:
+            return {
+                "success": True,
+                "message": (
+                    f"{label} is open."
+                    if already
+                    else f"Opened {label}."
+                ),
+                "verified": True,
+                "note": (
+                    f"{label} was already running, so its existing window was used."
+                    if already
+                    else "Confirmed by finding its process running after the launch."
+                ),
+            }
+        if time.time() >= deadline:
+            break
+        time.sleep(_LAUNCH_POLL_S)
+
+    return {
+        "success": False,
+        "message": (
+            f"{label} did not open. Windows was asked to start it and no "
+            f"{'/'.join(sorted(expected))} process was running {timeout_s:.0f}s later."
+        ),
+        "verified": False,
+        "note": "Nothing was reported as done, because nothing was done.",
+    }
+
+
 def _launch_windows_app(app_name: str) -> str:
     normalized = _normalize_app_name(app_name)
     if not normalized:
@@ -831,6 +1019,29 @@ def _create_folder(base_path: Path, folder_name: str) -> Path:
     created = base_path / folder_name.strip()
     created.mkdir(parents=True, exist_ok=True)
     return created
+
+
+def _safe_text_file_path(target: str | None, payload: dict | None = None) -> Path:
+    payload = payload or {}
+    raw_path = str(target or payload.get("path") or "").strip().strip('"')
+    if raw_path:
+        return Path(raw_path).expanduser()
+
+    folder = _resolve_folder_path(None, {"folder_key": str(payload.get("folder_key", "downloads"))})
+    filename = str(payload.get("filename", "")).strip().strip('"')
+    if not filename:
+        raise ValueError("A filename is required.")
+    if Path(filename).name != filename:
+        raise ValueError("Filename must not include folder separators.")
+    return folder / filename
+
+
+def _write_text_file(target: str | None, payload: dict | None = None) -> Path:
+    payload = payload or {}
+    file_path = _safe_text_file_path(target, payload)
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    file_path.write_text(str(payload.get("content", "")), encoding=str(payload.get("encoding", "utf-8")))
+    return file_path
 
 
 def _convert_pdfs_in_folder_to_ppts(source_path: Path, output_folder_name: str) -> dict[str, str | int]:
@@ -1070,31 +1281,45 @@ async def execute_desktop_command(action: str, target: str = None, payload: dict
 
     try:
         if action == "open_notepad":
-            pyautogui.press("win")
-            await asyncio.sleep(0.5)
-            pyautogui.write("notepad")
-            await asyncio.sleep(0.5)
-            pyautogui.press("enter")
-            return {"success": True, "message": "Opened Notepad."}
+            # Was: press Win, wait 0.5 s, type "notepad", wait 0.5 s, press Enter.
+            # Three ways for that to go wrong on a machine that is being used --
+            # the Start menu not opening, the search box not having focus yet, or a
+            # slow machine swallowing the Enter -- and the failure mode of the
+            # second one is typing the word "notepad" into whatever *did* have
+            # focus. `_launch_windows_app` starts the program instead of describing
+            # it to the shell, and `open_app` has been using it all along.
+            expected = _expected_process_names("notepad")
+            before = _running_process_names()
+            opened_app = _launch_windows_app("notepad")
+            return _launch_outcome(opened_app, expected, before)
 
         if action == "open_app":
             app_name = target or payload.get("app_name", "")
+            # Look before launching: the process table taken beforehand is the only
+            # way to tell "I opened it" from "it was already open", and both are
+            # better answers than the unconditional "Opened X." this used to give.
+            expected = _expected_process_names(app_name)
+            before = _running_process_names()
             opened_app = _launch_windows_app(app_name)
-            return {
-                "success": True,
-                "message": f"Opened {opened_app}.",
-                "note": "Window focus and background behavior still depend on the operating system.",
-            }
+            return _launch_outcome(opened_app, expected, before)
 
         if action == "open_app_url":
             app_name = target or payload.get("app_name", "")
             target_url = payload.get("url", "")
+            expected = _expected_process_names(app_name)
+            before = _running_process_names()
             opened_app, normalized_url = _launch_windows_app_with_url(app_name, target_url)
-            return {
-                "success": True,
-                "message": f"Opened {normalized_url} in {opened_app}.",
-                "note": "Window focus and background behavior still depend on the operating system.",
-            }
+            outcome = _launch_outcome(opened_app, expected, before)
+            if outcome.get("success"):
+                # The browser is confirmed running; the *page* is not. Playwright is
+                # what can assert a URL loaded, and this path does not use it, so the
+                # sentence stops where the evidence does.
+                outcome["message"] = f"Opened {normalized_url} in {opened_app}."
+                outcome["note"] = (
+                    f"{opened_app} is running. Which page it settled on is not something "
+                    "this path can confirm."
+                )
+            return outcome
 
         if action == "whatsapp_send_message":
             contact = str(payload.get("contact", target or "")).strip()
@@ -1163,6 +1388,37 @@ async def execute_desktop_command(action: str, target: str = None, payload: dict
                 "output_dir": result["output_dir"],
             }
 
+        if action == "write_text_file":
+            file_path = _write_text_file(target, payload)
+            return {
+                "success": True,
+                "message": f"Wrote file {file_path}.",
+                "path": str(file_path),
+            }
+
+        if action == "run_python_file":
+            file_path = _safe_text_file_path(target, payload)
+            if not file_path.exists():
+                return {"success": False, "message": f"Python file does not exist: {file_path}"}
+            completed = subprocess.run(
+                [sys.executable, str(file_path)],
+                capture_output=True,
+                text=True,
+                timeout=int(payload.get("timeout", 30)),
+            )
+            return {
+                "success": completed.returncode == 0,
+                "message": (
+                    f"Ran Python file {file_path.name}."
+                    if completed.returncode == 0
+                    else f"Python file {file_path.name} failed."
+                ),
+                "path": str(file_path),
+                "stdout": completed.stdout[-4000:],
+                "stderr": completed.stderr[-4000:],
+                "returncode": completed.returncode,
+            }
+
         if action == "unsupported_browser_workflow":
             return {
                 "success": False,
@@ -1200,6 +1456,18 @@ async def execute_desktop_command(action: str, target: str = None, payload: dict
             clicks = amount * (1 if direction == "up" else -1)
             pyautogui.scroll(clicks)
             return {"success": True, "message": f"Scrolled {direction} in the active window."}
+
+        if action == "click":
+            try:
+                click_count = int(payload.get("clicks", 1) or 1)
+            except (TypeError, ValueError):
+                click_count = 1
+            click_count = max(1, min(click_count, 2))
+            if click_count == 2:
+                pyautogui.doubleClick()
+                return {"success": True, "message": "Double-clicked in the active window."}
+            pyautogui.click()
+            return {"success": True, "message": "Clicked in the active window."}
 
         if action == "notify_user":
             title = str(payload.get("title", "Akansha notification")).strip() or "Akansha notification"

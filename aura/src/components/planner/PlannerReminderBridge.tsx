@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { apiUrl } from '@/lib/apiBase';
 
 type PlannerTask = {
   id: string;
@@ -24,6 +25,14 @@ type PlannerEvent = {
 
 const TASKS_STORAGE_KEY = 'akansha-planner-tasks';
 const EVENTS_STORAGE_KEY = 'akansha-planner-events';
+const PLANNER_STORAGE_SYNC_EVENT = 'akansha-planner-storage-updated';
+
+/** Heartbeat gap, and the base the failure backoff doubles from. */
+const SYNC_BASE_INTERVAL_MS = 15000;
+/** Longest gap the backoff will grow to, so it always recovers on its own. */
+const SYNC_BACKOFF_CEILING_MS = 300000;
+/** Coalesces a burst of planner edits into a single POST. */
+const SYNC_DEBOUNCE_MS = 800;
 
 function readStorage<T>(key: string, fallback: T): T {
   if (typeof window === 'undefined') return fallback;
@@ -38,7 +47,11 @@ function readStorage<T>(key: string, fallback: T): T {
 function writeStorage<T>(key: string, value: T) {
   if (typeof window === 'undefined') return;
   window.localStorage.setItem(key, JSON.stringify(value));
-  window.dispatchEvent(new StorageEvent('storage', { key }));
+  window.dispatchEvent(new CustomEvent(PLANNER_STORAGE_SYNC_EVENT, { detail: { key } }));
+}
+
+function samePlannerPayload<T>(left: T, right: T) {
+  return JSON.stringify(left) === JSON.stringify(right);
 }
 
 function formatTime12h(time24: string) {
@@ -87,7 +100,7 @@ function showBrowserNotification(title: string, body: string) {
 
 async function sendDesktopNotification(title: string, body: string) {
   try {
-    await fetch('http://localhost:8000/api/system/notify', {
+    await fetch(apiUrl('/api/system/notify'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title, body }),
@@ -102,26 +115,36 @@ export default function PlannerReminderBridge() {
   const [events, setEvents] = useState<PlannerEvent[]>([]);
   const timerMapRef = useRef<Map<string, number>>(new Map());
   const syncBackendRef = useRef<(() => void) | null>(null);
+  const lastSyncedPayloadRef = useRef<string | null>(null);
+  const consecutiveFailuresRef = useRef(0);
+  const retryNotBeforeRef = useRef(0);
+  const inFlightRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     const sync = (event?: Event) => {
       const storageEvent = event instanceof StorageEvent ? event : undefined;
-      if (
-        storageEvent?.key &&
-        storageEvent.key !== TASKS_STORAGE_KEY &&
-        storageEvent.key !== EVENTS_STORAGE_KEY
-      ) {
+      const customEvent = event instanceof CustomEvent ? event : undefined;
+      const key = storageEvent?.key || customEvent?.detail?.key;
+      if (key && key !== TASKS_STORAGE_KEY && key !== EVENTS_STORAGE_KEY) {
         return;
       }
-      setTasks(readStorage<PlannerTask[]>(TASKS_STORAGE_KEY, []));
-      setEvents(readStorage<PlannerEvent[]>(EVENTS_STORAGE_KEY, []));
+      setTasks((previous) => {
+        const next = readStorage<PlannerTask[]>(TASKS_STORAGE_KEY, []);
+        return samePlannerPayload(previous, next) ? previous : next;
+      });
+      setEvents((previous) => {
+        const next = readStorage<PlannerEvent[]>(EVENTS_STORAGE_KEY, []);
+        return samePlannerPayload(previous, next) ? previous : next;
+      });
     };
 
     sync();
     window.addEventListener('storage', sync);
+    window.addEventListener(PLANNER_STORAGE_SYNC_EVENT, sync);
     window.addEventListener('focus', sync);
     return () => {
       window.removeEventListener('storage', sync);
+      window.removeEventListener(PLANNER_STORAGE_SYNC_EVENT, sync);
       window.removeEventListener('focus', sync);
     };
   }, []);
@@ -201,21 +224,69 @@ export default function PlannerReminderBridge() {
   useEffect(() => {
     syncBackendRef.current = () => {
       const payload = buildReminderSyncPayload(tasks, events);
-      fetch('http://localhost:8000/api/planner/reminders/sync', {
+      const serialized = JSON.stringify(payload);
+
+      // Nothing changed and the last attempt already landed: sending it again
+      // teaches the backend nothing. The 15s heartbeat below exists to recover
+      // from a *failed* sync, not to re-post an identical payload forever.
+      if (serialized === lastSyncedPayloadRef.current) return;
+
+      // A failed backend gets exponentially longer gaps instead of a fixed 15s
+      // retry. Measured with the backend down: one failed POST plus one
+      // console.warn every 15 seconds, indefinitely -- ~240 per hour, which is
+      // the ERR_CONNECTION_REFUSED flood in the network log. Backoff turns that
+      // into ~10 attempts an hour while still recovering on its own.
+      const now = Date.now();
+      if (now < retryNotBeforeRef.current) return;
+
+      if (inFlightRef.current) inFlightRef.current.abort();
+      const controller = new AbortController();
+      inFlightRef.current = controller;
+
+      fetch(apiUrl('/api/planner/reminders/sync'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      }).catch((error) => {
-        console.warn('[Akansha planner] recovered reminder sync failure:', error);
-      });
+        body: serialized,
+        signal: controller.signal,
+      })
+        .then((response) => {
+          if (!response.ok) throw new Error(`sync rejected with ${response.status}`);
+          lastSyncedPayloadRef.current = serialized;
+          consecutiveFailuresRef.current = 0;
+          retryNotBeforeRef.current = 0;
+        })
+        .catch((error) => {
+          if (controller.signal.aborted) return;
+
+          const failures = consecutiveFailuresRef.current + 1;
+          consecutiveFailuresRef.current = failures;
+          retryNotBeforeRef.current =
+            Date.now() + Math.min(SYNC_BACKOFF_CEILING_MS, SYNC_BASE_INTERVAL_MS * 2 ** failures);
+
+          // Only the first failure and then every tenth: an unreachable backend
+          // is one fact, not one fact per retry, and drowning the console hides
+          // the errors that do need reading.
+          if (failures === 1 || failures % 10 === 0) {
+            console.warn(
+              `[Akansha planner] reminder sync unavailable (attempt ${failures}), retrying with backoff:`,
+              error
+            );
+          }
+        })
+        .finally(() => {
+          if (inFlightRef.current === controller) inFlightRef.current = null;
+        });
     };
 
-    syncBackendRef.current();
+    // Debounced: editing a task fires this effect on every keystroke that
+    // reaches planner state, and each one used to be its own POST.
+    const debounce = window.setTimeout(() => syncBackendRef.current?.(), SYNC_DEBOUNCE_MS);
+    return () => window.clearTimeout(debounce);
   }, [events, tasks]);
 
   useEffect(() => {
     const resync = () => syncBackendRef.current?.();
-    const interval = window.setInterval(resync, 15000);
+    const interval = window.setInterval(resync, SYNC_BASE_INTERVAL_MS);
     window.addEventListener('focus', resync);
     document.addEventListener('visibilitychange', resync);
 
@@ -223,6 +294,7 @@ export default function PlannerReminderBridge() {
       window.clearInterval(interval);
       window.removeEventListener('focus', resync);
       document.removeEventListener('visibilitychange', resync);
+      inFlightRef.current?.abort();
     };
   }, []);
 

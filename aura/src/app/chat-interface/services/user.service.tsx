@@ -1,15 +1,11 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 
 const UserService = () => {
   React.useEffect(() => {
     // eslint-disable-next-line no-console
     console.warn('Placeholder: UserService is not implemented yet.');
   }, []);
-  return (
-    <>
-  { /*UserService */} 
- </>
-  );
+  return <>{/*UserService */}</>;
 };
 
 export { UserService };

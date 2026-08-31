@@ -3,6 +3,7 @@
 export const PLANNER_ACTION_EVENT = 'akansha-planner-action';
 export const TASKS_STORAGE_KEY = 'akansha-planner-tasks';
 export const EVENTS_STORAGE_KEY = 'akansha-planner-events';
+export const PLANNER_STORAGE_SYNC_EVENT = 'akansha-planner-storage-updated';
 
 export type PlannerActionKind = 'task' | 'calendar';
 export type PlannerCommandMode = 'create' | 'update' | 'delete';
@@ -151,11 +152,7 @@ export function extractReminderTime(text: string) {
     /\b(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)\b.*?\b(?:remind me|reminder|notify me|notify|notification|alert|alarm|pop\s*up|popup)\b/i
   );
   if (leadingReminderMatch) {
-    return to24Hour(
-      leadingReminderMatch[1],
-      leadingReminderMatch[2],
-      leadingReminderMatch[3]
-    );
+    return to24Hour(leadingReminderMatch[1], leadingReminderMatch[2], leadingReminderMatch[3]);
   }
 
   return undefined;
@@ -190,7 +187,10 @@ function cleanExtractedPlannerSubject(value: string) {
     .replace(/\b(?:reminder|remainder|notification|alert|alarm|pop\s*up|popup)\b/gi, '')
     .replace(/\b(?:at|by|around|near)\s+\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)\b/gi, '')
     .replace(/\b(?:for|on)\s+\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)\b/gi, '')
-    .replace(/\b(?:with|and)\s+(?:a\s+)?(?:reminder|remainder|notification|alert|alarm|pop\s*up|popup)\b.*$/gi, '')
+    .replace(
+      /\b(?:with|and)\s+(?:a\s+)?(?:reminder|remainder|notification|alert|alarm|pop\s*up|popup)\b.*$/gi,
+      ''
+    )
     .replace(/[.!?]+$/g, '')
     .replace(/\s+/g, ' ')
     .trim();
@@ -219,7 +219,10 @@ export function cleanPlannerTitle(text: string) {
     /\b(?:alert|alarm|reminder|notification|pop\s*up|popup)(?:\s+message)?\s*(?:should\s+be|message\s+is|as|saying|to\s+say|:)\s*["']?(.+?)["']?\s*$/i
   );
   if (explicitAlertMessage?.[1]) {
-    return explicitAlertMessage[1].replace(/^[\s:,-]+/, '').replace(/[.]+$/, '').trim();
+    return explicitAlertMessage[1]
+      .replace(/^[\s:,-]+/, '')
+      .replace(/[.]+$/, '')
+      .trim();
   }
 
   const extractedSubject = extractPlannerSubjectPhrase(text);
@@ -228,20 +231,41 @@ export function cleanPlannerTitle(text: string) {
   const trimmed = text
     .replace(/please\s+/gi, '')
     .replace(/\b(can you|could you|would you)\b/gi, '')
-    .replace(/\b(?:also\s+)?(?:add\s+)?(?:the\s+)?(?:reminder|remainder|notification|alert|alarm|pop\s*up|popup|notify me|notify|remind me)\b.*$/gi, '')
-    .replace(/\b(add|create|save|put|schedule|plan|set|edit|update|change|modify|move|reschedule|shift|rename|mark|delete|remove|clear|cancel|erase)\b/gi, '')
-    .replace(/\b(notify me|notify|notification|alert|alarm|pop\s*up|popup|remind me|reminder|remainder|custom reminder(?: time)?|set a reminder)\b.*?(\d{1,2})(?::\d{2})?\s*(a\.?m\.?|p\.?m\.?)\b/gi, '')
-    .replace(/\b(\d{1,2})(?::\d{2})?\s*(a\.?m\.?|p\.?m\.?)\b\s*(?:-|to)\s*\b(\d{1,2})(?::\d{2})?\s*(a\.?m\.?|p\.?m\.?)\b/gi, '')
+    .replace(
+      /\b(?:also\s+)?(?:add\s+)?(?:the\s+)?(?:reminder|remainder|notification|alert|alarm|pop\s*up|popup|notify me|notify|remind me)\b.*$/gi,
+      ''
+    )
+    .replace(
+      /\b(add|create|save|put|schedule|plan|set|edit|update|change|modify|move|reschedule|shift|rename|mark|delete|remove|clear|cancel|erase)\b/gi,
+      ''
+    )
+    .replace(
+      /\b(notify me|notify|notification|alert|alarm|pop\s*up|popup|remind me|reminder|remainder|custom reminder(?: time)?|set a reminder)\b.*?(\d{1,2})(?::\d{2})?\s*(a\.?m\.?|p\.?m\.?)\b/gi,
+      ''
+    )
+    .replace(
+      /\b(\d{1,2})(?::\d{2})?\s*(a\.?m\.?|p\.?m\.?)\b\s*(?:-|to)\s*\b(\d{1,2})(?::\d{2})?\s*(a\.?m\.?|p\.?m\.?)\b/gi,
+      ''
+    )
     .replace(/\b(today|tomorrow|day after tomorrow)\b/gi, '')
     .replace(/\b\d{4}-\d{2}-\d{2}\b/gi, '')
     .replace(/\b\d{1,2}(?::\d{2})?\s*(a\.?m\.?|p\.?m\.?)\b/gi, '')
     .replace(/(this|it|that)\s+(to|into)\s+(my\s+)?(calendar|todo list|to-?do list|tasks?)/gi, '')
     .replace(/(to|into)\s+(my\s+|the\s+)?(calendar|todo list|to-?do list|tasks?)/gi, '')
     .replace(/\b(which is|that is)\s+(in|from|inside)\b/gi, '')
-    .replace(/\b(in|from|inside)\s+(my\s+|the\s+)?(calendar|schedule|event|todo list|to-?do list|do-to list|tasks?)\b/gi, '')
-    .replace(/\b(remind me|set a reminder|notification|alert|alarm|pop\s*up|popup|notify me|with reminder|with a reminder)\b/gi, '')
+    .replace(
+      /\b(in|from|inside)\s+(my\s+|the\s+)?(calendar|schedule|event|todo list|to-?do list|do-to list|tasks?)\b/gi,
+      ''
+    )
+    .replace(
+      /\b(remind me|set a reminder|notification|alert|alarm|pop\s*up|popup|notify me|with reminder|with a reminder)\b/gi,
+      ''
+    )
     .replace(/\b(calendar|schedule|event|todo list|to-?do list|do-to list|todo|tasks?)\b/gi, '')
-    .replace(/\b(at|for|on)\s+(today|tomorrow|day after tomorrow|\d{4}-\d{2}-\d{2}|(\d{1,2})(?::\d{2})?\s*(a\.?m\.?|p\.?m\.?))/gi, '')
+    .replace(
+      /\b(at|for|on)\s+(today|tomorrow|day after tomorrow|\d{4}-\d{2}-\d{2}|(\d{1,2})(?::\d{2})?\s*(a\.?m\.?|p\.?m\.?))/gi,
+      ''
+    )
     .replace(/\b(also|the|my)\b/gi, '')
     .replace(/\b(to|into|for|at|on|with|and)\b\s*$/gi, '')
     .replace(/\s+/g, ' ')
@@ -280,7 +304,9 @@ export function isWeakPlannerTitle(title: string) {
     lowered === 'ok' ||
     lowered === 'okay' ||
     lowered.length < 5 ||
-    /\b(ok|okay|nice|please|add|it|that|this|calendar|todo|to-do|task|tasks|notify|remind|reminder|remainder|alert|alarm|popup)\b/.test(lowered)
+    /\b(ok|okay|nice|please|add|it|that|this|calendar|todo|to-do|task|tasks|notify|remind|reminder|remainder|alert|alarm|popup)\b/.test(
+      lowered
+    )
   );
 }
 
@@ -290,8 +316,7 @@ export function isReminderOnlyPlannerFollowUp(text: string) {
   const reminderTime = extractReminderTime(text);
   const hasTime = Boolean(reminderTime || startTime);
   const hasReminderLanguage =
-    REMINDER_INTENT_PATTERN.test(text) ||
-    /\b(yes|yeah|yep|ok|okay|also)\b/.test(lowered);
+    REMINDER_INTENT_PATTERN.test(text) || /\b(yes|yeah|yep|ok|okay|also)\b/.test(lowered);
   const cleanedTitle = cleanPlannerTitle(text);
 
   return hasTime && hasReminderLanguage && isWeakPlannerTitle(cleanedTitle);
@@ -300,8 +325,9 @@ export function isReminderOnlyPlannerFollowUp(text: string) {
 export function inferPlannerCommand(text: string): PlannerCommand | null {
   const lowered = normalizePlannerText(text);
   const wantsCalendar =
-    /\b(calendar|schedule|event|remind me|reminder|remainder|notification|alert|alarm|pop up|popup)\b/.test(lowered) ||
-    /\badd\b.*\bcalendar\b/.test(lowered);
+    /\b(calendar|schedule|event|remind me|reminder|remainder|notification|alert|alarm|pop up|popup)\b/.test(
+      lowered
+    ) || /\badd\b.*\bcalendar\b/.test(lowered);
   const wantsTask =
     /\b(todo list|to-?do list|todo|task list|tasks?|checklist)\b/.test(lowered) ||
     /\badd\b.*\btask\b/.test(lowered);
@@ -313,7 +339,9 @@ export function inferPlannerCommand(text: string): PlannerCommand | null {
   const followUpReference =
     /\b(add|put|move|schedule|plan|edit|update|change|modify)\b/.test(lowered) &&
     /\b(it|this|that)\b/.test(lowered) &&
-    /\b(my\b.*\b(calendar|todo list|task|tasks)\b|\b(calendar|todo list|task|tasks)\b)/.test(lowered);
+    /\b(my\b.*\b(calendar|todo list|task|tasks)\b|\b(calendar|todo list|task|tasks)\b)/.test(
+      lowered
+    );
 
   const hasReminderIntent = REMINDER_INTENT_PATTERN.test(lowered);
   if (!hasAction && !followUpReference && !hasReminderIntent) return null;
@@ -322,8 +350,8 @@ export function inferPlannerCommand(text: string): PlannerCommand | null {
   const mode: PlannerCommandMode = /\b(delete|remove|clear|cancel|erase)\b/.test(lowered)
     ? 'delete'
     : /\b(edit|update|change|modify|move|reschedule|shift|rename|mark|complete|done)\b/.test(
-        lowered
-      )
+          lowered
+        )
       ? 'update'
       : 'create';
 
@@ -331,8 +359,10 @@ export function inferPlannerCommand(text: string): PlannerCommand | null {
   const date = extractDateValue(text);
   const reminderTime = extractReminderTime(text);
   const reminderEnabled =
-    /\b(remind|reminder|remainder|notify|notification|alert|alarm|pop up|popup)\b/.test(lowered) || Boolean(reminderTime);
-  const completed = /\b(mark|set)\b.*\b(done|complete|completed)\b/.test(lowered) || /\bcompleted\b/.test(lowered);
+    /\b(remind|reminder|remainder|notify|notification|alert|alarm|pop up|popup)\b/.test(lowered) ||
+    Boolean(reminderTime);
+  const completed =
+    /\b(mark|set)\b.*\b(done|complete|completed)\b/.test(lowered) || /\bcompleted\b/.test(lowered);
 
   return {
     mode,
@@ -368,11 +398,13 @@ export function readPlannerStorage<T>(key: string, fallback: T): T {
 function writePlannerStorage<T>(key: string, value: T) {
   if (typeof window === 'undefined') return;
   window.localStorage.setItem(key, JSON.stringify(value));
-  window.dispatchEvent(new StorageEvent('storage', { key }));
+  window.dispatchEvent(new CustomEvent(PLANNER_STORAGE_SYNC_EVENT, { detail: { key } }));
 }
 
 function normalizeMatch(text: string) {
-  return normalizePlannerText(text).replace(/[^a-z0-9\s]/g, '').trim();
+  return normalizePlannerText(text)
+    .replace(/[^a-z0-9\s]/g, '')
+    .trim();
 }
 
 function splitTaskItems(text: string) {
@@ -381,7 +413,10 @@ function splitTaskItems(text: string) {
     .replace(/\b(to|into)\s+(my\s+)?(todo list|to-?do list|tasks?|checklist)\b/gi, '')
     .replace(/\b(today|tomorrow|day after tomorrow)\b/gi, '')
     .replace(/\b\d{4}-\d{2}-\d{2}\b/gi, '')
-    .replace(/\b(notify me|notify|notification|alert|alarm|pop\s*up|popup|remind me|reminder|custom reminder(?: time)?|set a reminder)\b.*?(\d{1,2})(?::\d{2})?\s*(a\.?m\.?|p\.?m\.?)\b/gi, '')
+    .replace(
+      /\b(notify me|notify|notification|alert|alarm|pop\s*up|popup|remind me|reminder|custom reminder(?: time)?|set a reminder)\b.*?(\d{1,2})(?::\d{2})?\s*(a\.?m\.?|p\.?m\.?)\b/gi,
+      ''
+    )
     .replace(/\b\d{1,2}(?::\d{2})?\s*(a\.?m\.?|p\.?m\.?)\b/gi, '')
     .replace(/\s+/g, ' ')
     .trim();
@@ -390,7 +425,10 @@ function splitTaskItems(text: string) {
     .replace(/\r/g, '\n')
     .replace(/\s*(?:-|\u2022|\u00b7)\s*/g, '\n')
     .replace(/\s*,\s*/g, '\n')
-    .replace(/\s+(?=(?:mangoes?|tomatoes?|cucumbers?|onions?|potatoes?|apples?|bananas?)\b\s+\d)/gi, '\n')
+    .replace(
+      /\s+(?=(?:mangoes?|tomatoes?|cucumbers?|onions?|potatoes?|apples?|bananas?)\b\s+\d)/gi,
+      '\n'
+    )
     .split('\n')
     .map((item) => item.trim())
     .filter(Boolean);
@@ -402,7 +440,7 @@ function splitTaskItems(text: string) {
           item
             .replace(/^(and|also)\s+/i, '')
             .replace(/^(in|buy|get|take)\s+/i, '')
-            .replace(/^(i am going to .*?\b(list|todo list|to do list)\b[:\-]?\s*)/i, '')
+            .replace(/^(i am going to .*?\b(list|todo list|to do list)\b[:-]?\s*)/i, '')
             .replace(/^(actually\s+)/i, '')
             .replace(/[.]+$/, '')
             .trim()
@@ -510,10 +548,7 @@ function resolveReminderFollowUpKind(
   return 'calendar';
 }
 
-export function applyPlannerReminderFollowUp(
-  text: string,
-  preferredKind?: PlannerActionKind
-) {
+export function applyPlannerReminderFollowUp(text: string, preferredKind?: PlannerActionKind) {
   const reminderTime = extractReminderTime(text) || extractTimeWindow(text).startTime;
   if (!reminderTime) {
     return {
@@ -535,7 +570,8 @@ export function applyPlannerReminderFollowUp(
       };
     }
 
-    const reminderDate = extractDateValue(text) || target.dueDate || new Date().toISOString().slice(0, 10);
+    const reminderDate =
+      extractDateValue(text) || target.dueDate || new Date().toISOString().slice(0, 10);
     const updated = existingTasks.map((item) =>
       item.id === target.id
         ? {
@@ -562,7 +598,8 @@ export function applyPlannerReminderFollowUp(
     };
   }
 
-  const reminderDate = extractDateValue(text) || target.date || new Date().toISOString().slice(0, 10);
+  const reminderDate =
+    extractDateValue(text) || target.date || new Date().toISOString().slice(0, 10);
   const updated = existingEvents.map((item) =>
     item.id === target.id
       ? {
@@ -588,12 +625,9 @@ export function applyPlannerReminderFollowUp(
   };
 }
 
-export function applyPlannerCommand(
-  command: PlannerCommand,
-  fallbackTitle?: string
-) {
+export function applyPlannerCommand(command: PlannerCommand, fallbackTitle?: string) {
   const resolvedTitle = isWeakPlannerTitle(command.title)
-    ? (fallbackTitle?.trim() || command.title)
+    ? fallbackTitle?.trim() || command.title
     : command.title.trim();
 
   if (command.kind === 'task') {
@@ -634,7 +668,9 @@ export function applyPlannerCommand(
               title: isWeakPlannerTitle(command.title) ? item.title : resolvedTitle,
               dueDate: command.date || item.dueDate,
               reminderEnabled:
-                command.reminderEnabled !== undefined ? command.reminderEnabled : item.reminderEnabled,
+                command.reminderEnabled !== undefined
+                  ? command.reminderEnabled
+                  : item.reminderEnabled,
               reminderAt:
                 command.reminderEnabled === false
                   ? undefined
@@ -717,7 +753,9 @@ export function applyPlannerCommand(
             startTime: command.startTime || item.startTime,
             endTime: command.endTime || item.endTime,
             reminderEnabled:
-              command.reminderEnabled !== undefined ? command.reminderEnabled : item.reminderEnabled,
+              command.reminderEnabled !== undefined
+                ? command.reminderEnabled
+                : item.reminderEnabled,
             reminderAt:
               command.reminderEnabled === false
                 ? undefined
@@ -751,10 +789,9 @@ export function applyPlannerCommand(
     endTime: resolvedEndTime,
     type: 'reminder',
     reminderEnabled: Boolean(command.reminderEnabled),
-    reminderAt:
-      command.reminderEnabled
-        ? command.reminderAt || `${resolvedDate}T${resolvedStartTime}:00`
-        : undefined,
+    reminderAt: command.reminderEnabled
+      ? command.reminderAt || `${resolvedDate}T${resolvedStartTime}:00`
+      : undefined,
     notified: false,
   };
 

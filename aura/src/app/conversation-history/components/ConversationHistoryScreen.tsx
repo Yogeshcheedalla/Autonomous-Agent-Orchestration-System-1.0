@@ -18,6 +18,8 @@ import {
   type ConversationStatus,
 } from '@/lib/chatHistoryMetadata';
 import { toast } from 'sonner';
+import { apiUrl } from '@/lib/apiBase';
+import type { ChatHistoryMessage, ChatHistoryResponse } from '@/types/chatApi';
 
 export type ConversationMessage = {
   id: number | string;
@@ -52,7 +54,8 @@ export const ALL_CONVERSATIONS: Conversation[] = [
   {
     id: 'conv-h001',
     title: 'Refactor auth middleware',
-    summary: 'Discussed async/await patterns for Express.js auth middleware, JWT error handling, and rate limiting with Redis store for distributed deployments.',
+    summary:
+      'Discussed async/await patterns for Express.js auth middleware, JWT error handling, and rate limiting with Redis store for distributed deployments.',
     model: 'GPT-4o',
     modelColor: 'bg-green-500',
     folder: 'Work',
@@ -72,7 +75,8 @@ export const ALL_CONVERSATIONS: Conversation[] = [
   {
     id: 'conv-h002',
     title: 'Explain RLHF in simple terms',
-    summary: 'Explained Reinforcement Learning from Human Feedback using real-world analogies — training loop, reward models, and why RLHF matters for alignment.',
+    summary:
+      'Explained Reinforcement Learning from Human Feedback using real-world analogies — training loop, reward models, and why RLHF matters for alignment.',
     model: 'Claude 3.5 Sonnet',
     modelColor: 'bg-orange-400',
     folder: 'Research',
@@ -93,7 +97,8 @@ export const ALL_CONVERSATIONS: Conversation[] = [
   {
     id: 'conv-h003',
     title: 'Draft Q2 product roadmap',
-    summary: 'Drafted a comprehensive Q2 product roadmap with feature prioritization, resource allocation, and OKR alignment for a B2B SaaS product team.',
+    summary:
+      'Drafted a comprehensive Q2 product roadmap with feature prioritization, resource allocation, and OKR alignment for a B2B SaaS product team.',
     model: 'Gemini 1.5 Pro',
     modelColor: 'bg-blue-400',
     folder: 'Work',
@@ -114,7 +119,8 @@ export const ALL_CONVERSATIONS: Conversation[] = [
   {
     id: 'conv-h004',
     title: 'SQL query optimization tips',
-    summary: 'Covered index strategies, query execution plans, EXPLAIN ANALYZE in PostgreSQL, N+1 problem solutions, and connection pooling best practices.',
+    summary:
+      'Covered index strategies, query execution plans, EXPLAIN ANALYZE in PostgreSQL, N+1 problem solutions, and connection pooling best practices.',
     model: 'GPT-4o',
     modelColor: 'bg-green-500',
     folder: 'Work',
@@ -134,7 +140,8 @@ export const ALL_CONVERSATIONS: Conversation[] = [
   {
     id: 'conv-h005',
     title: 'Kubernetes pod scheduling',
-    summary: 'Deep dive into Kubernetes scheduling algorithms, node affinity/anti-affinity rules, taints and tolerations, and resource request/limit tuning.',
+    summary:
+      'Deep dive into Kubernetes scheduling algorithms, node affinity/anti-affinity rules, taints and tolerations, and resource request/limit tuning.',
     model: 'Claude 3.5 Sonnet',
     modelColor: 'bg-orange-400',
     folder: 'Work',
@@ -154,7 +161,8 @@ export const ALL_CONVERSATIONS: Conversation[] = [
   {
     id: 'conv-h006',
     title: 'RAG pipeline architecture',
-    summary: 'Designed a production RAG pipeline with chunking strategies, embedding models, vector database selection (Pinecone vs Weaviate), and re-ranking approaches.',
+    summary:
+      'Designed a production RAG pipeline with chunking strategies, embedding models, vector database selection (Pinecone vs Weaviate), and re-ranking approaches.',
     model: 'GPT-4o',
     modelColor: 'bg-green-500',
     folder: 'Research',
@@ -174,7 +182,8 @@ export const ALL_CONVERSATIONS: Conversation[] = [
   {
     id: 'conv-h007',
     title: 'React Server Components deep dive',
-    summary: 'Explored RSC architecture, server/client component boundaries, data fetching patterns, streaming with Suspense, and migration strategies from Pages Router.',
+    summary:
+      'Explored RSC architecture, server/client component boundaries, data fetching patterns, streaming with Suspense, and migration strategies from Pages Router.',
     model: 'Claude 3.5 Sonnet',
     modelColor: 'bg-orange-400',
     folder: 'Work',
@@ -195,7 +204,8 @@ export const ALL_CONVERSATIONS: Conversation[] = [
   {
     id: 'conv-h008',
     title: 'Pricing strategy for SaaS',
-    summary: 'Analyzed freemium vs free trial models, seat-based vs usage-based pricing, value metric selection, and competitive pricing analysis for a developer tool.',
+    summary:
+      'Analyzed freemium vs free trial models, seat-based vs usage-based pricing, value metric selection, and competitive pricing analysis for a developer tool.',
     model: 'Gemini 1.5 Pro',
     modelColor: 'bg-blue-400',
     folder: 'Personal',
@@ -215,7 +225,8 @@ export const ALL_CONVERSATIONS: Conversation[] = [
   {
     id: 'conv-h009',
     title: 'WebSocket vs SSE for streaming',
-    summary: 'Compared WebSocket and Server-Sent Events for real-time AI streaming, covering latency, reconnection, proxy compatibility, and implementation complexity.',
+    summary:
+      'Compared WebSocket and Server-Sent Events for real-time AI streaming, covering latency, reconnection, proxy compatibility, and implementation complexity.',
     model: 'GPT-4o',
     modelColor: 'bg-green-500',
     folder: 'Research',
@@ -235,7 +246,8 @@ export const ALL_CONVERSATIONS: Conversation[] = [
   {
     id: 'conv-h010',
     title: 'Write onboarding email sequence',
-    summary: 'Created a 5-email onboarding sequence for a developer tool — welcome, feature discovery, first success moment, social proof, and upgrade nudge.',
+    summary:
+      'Created a 5-email onboarding sequence for a developer tool — welcome, feature discovery, first success moment, social proof, and upgrade nudge.',
     model: 'Claude 3.5 Sonnet',
     modelColor: 'bg-orange-400',
     folder: 'Personal',
@@ -255,7 +267,8 @@ export const ALL_CONVERSATIONS: Conversation[] = [
   {
     id: 'conv-h011',
     title: 'Terraform module for ECS',
-    summary: 'Built a reusable Terraform module for AWS ECS Fargate with ALB, auto-scaling, CloudWatch logging, secrets management, and IAM role patterns.',
+    summary:
+      'Built a reusable Terraform module for AWS ECS Fargate with ALB, auto-scaling, CloudWatch logging, secrets management, and IAM role patterns.',
     model: 'GPT-4o',
     modelColor: 'bg-green-500',
     folder: 'Work',
@@ -275,7 +288,8 @@ export const ALL_CONVERSATIONS: Conversation[] = [
   {
     id: 'conv-h012',
     title: 'Explain attention mechanism',
-    summary: 'Detailed explanation of self-attention, multi-head attention, positional encoding, and how transformers process sequential data without recurrence.',
+    summary:
+      'Detailed explanation of self-attention, multi-head attention, positional encoding, and how transformers process sequential data without recurrence.',
     model: 'Gemini 1.5 Pro',
     modelColor: 'bg-blue-400',
     folder: 'Research',
@@ -296,7 +310,7 @@ export const ALL_CONVERSATIONS: Conversation[] = [
 ];
 
 function buildLiveConversations(
-  messages: any[],
+  messages: ChatHistoryMessage[],
   folders: ConversationFolder[],
   metadata: ReturnType<typeof readConversationMetadata>
 ): Conversation[] {
@@ -322,6 +336,13 @@ function buildLiveConversations(
     const content = String(message.content || '').trim();
     const existing = sessions.get(sessionId);
     const fallbackTitle = message.role === 'user' && content ? content : 'New chat';
+    // The wire row's `timestamp` is nullable (the handler emits None for rows that
+    // predate the column) while ConversationMessage treats it as optional, so it
+    // has to be normalised rather than passed through as a literal null.
+    const conversationMessage: ConversationMessage = {
+      ...message,
+      timestamp: message.timestamp ?? undefined,
+    };
 
     if (!existing) {
       sessions.set(sessionId, {
@@ -332,16 +353,21 @@ function buildLiveConversations(
         summary: content || 'No message content saved yet.',
         messageCount: 1,
         tokenCount: Math.max(1, Math.floor(content.length / 4)),
-        hasAttachments: Boolean(message.attachments?.length),
-        messages: [message],
+        // Always false, and honestly so. This used to read
+        // `Boolean(message.attachments?.length)`, but GET /api/chat returns no
+        // `attachments` field and `chat_messages` has no column for one -- so the
+        // read was undefined on every row and the indicator could never light up.
+        // Persisting attachments is a schema change, not a cleanup; until then the
+        // flag says what is actually known.
+        hasAttachments: false,
+        messages: [conversationMessage],
       });
       return;
     }
 
     existing.messageCount += 1;
     existing.tokenCount += Math.max(1, Math.floor(content.length / 4));
-    existing.hasAttachments = existing.hasAttachments || Boolean(message.attachments?.length);
-    existing.messages.push(message);
+    existing.messages.push(conversationMessage);
 
     if (timestamp < existing.first) existing.first = timestamp;
     if (timestamp >= existing.latest) {
@@ -401,13 +427,21 @@ export default function ConversationHistoryScreen() {
       const storedFolders = readConversationFolders();
       const metadata = readConversationMetadata();
       setFolders(storedFolders);
-      const response = await fetch('http://localhost:8000/api/chat');
-      const payload = await response.json();
-      const liveConversations = buildLiveConversations(payload.messages ?? [], storedFolders, metadata);
+      const response = await fetch(apiUrl('/api/chat'));
+      const payload = (await response.json()) as ChatHistoryResponse;
+      const liveConversations = buildLiveConversations(
+        payload.messages ?? [],
+        storedFolders,
+        metadata
+      );
       setConversations(liveConversations);
       setSelectedConversation((current) => {
         if (!current) return liveConversations[0] ?? null;
-        return liveConversations.find((conversation) => conversation.id === current.id) ?? liveConversations[0] ?? null;
+        return (
+          liveConversations.find((conversation) => conversation.id === current.id) ??
+          liveConversations[0] ??
+          null
+        );
       });
     } catch (error) {
       console.warn('Failed to load conversation history:', error);
@@ -443,7 +477,7 @@ export default function ConversationHistoryScreen() {
       try {
         await Promise.all(
           ids.map(async (id) => {
-            const response = await fetch(`http://localhost:8000/api/chat/session/${encodeURIComponent(id)}`, {
+            const response = await fetch(apiUrl(`/api/chat/session/${encodeURIComponent(id)}`), {
               method: 'DELETE',
             });
             if (!response.ok) {
@@ -454,11 +488,13 @@ export default function ConversationHistoryScreen() {
         );
 
         ids.forEach(deleteSessionTitle);
-        setConversations((current) => current.filter((conversation) => !ids.includes(conversation.id)));
+        setConversations((current) =>
+          current.filter((conversation) => !ids.includes(conversation.id))
+        );
         setSelectedIds(new Set());
         setSelectedConversation((current) =>
           current && ids.includes(current.id)
-            ? conversations.find((conversation) => !ids.includes(conversation.id)) ?? null
+            ? (conversations.find((conversation) => !ids.includes(conversation.id)) ?? null)
             : current
         );
         window.dispatchEvent(new CustomEvent('akansha-history-updated'));
@@ -476,7 +512,7 @@ export default function ConversationHistoryScreen() {
     if (!confirmed) return;
 
     try {
-      const response = await fetch('http://localhost:8000/api/chat/history', {
+      const response = await fetch(apiUrl('/api/chat/history'), {
         method: 'DELETE',
       });
       if (!response.ok) {
@@ -497,14 +533,17 @@ export default function ConversationHistoryScreen() {
     }
   }, []);
 
-  const createFolder = useCallback((name: string) => {
-    const nextFolder = { id: slugFolderId(name), name };
-    const nextFolders = [...folders, nextFolder];
-    writeConversationFolders(nextFolders);
-    setFolders(nextFolders);
-    setSelectedFolder(nextFolder.id);
-    toast.success(`Folder "${name}" created`);
-  }, [folders]);
+  const createFolder = useCallback(
+    (name: string) => {
+      const nextFolder = { id: slugFolderId(name), name };
+      const nextFolders = [...folders, nextFolder];
+      writeConversationFolders(nextFolders);
+      setFolders(nextFolders);
+      setSelectedFolder(nextFolder.id);
+      toast.success(`Folder "${name}" created`);
+    },
+    [folders]
+  );
 
   const moveConversations = useCallback(
     (ids: string[], folderId: string) => {
@@ -515,7 +554,9 @@ export default function ConversationHistoryScreen() {
       }
 
       updateConversationMetadata(ids, { folderId });
-      toast.success(`${ids.length} conversation${ids.length > 1 ? 's' : ''} moved to ${folder.name}`);
+      toast.success(
+        `${ids.length} conversation${ids.length > 1 ? 's' : ''} moved to ${folder.name}`
+      );
     },
     [folders, updateConversationMetadata]
   );
@@ -564,7 +605,9 @@ export default function ConversationHistoryScreen() {
       return;
     }
 
-    const confirmed = window.confirm(`Delete ${archivedIds.length} archived conversation${archivedIds.length > 1 ? 's' : ''}?`);
+    const confirmed = window.confirm(
+      `Delete ${archivedIds.length} archived conversation${archivedIds.length > 1 ? 's' : ''}?`
+    );
     if (!confirmed) return;
     void deleteConversations(archivedIds);
   }, [conversations, deleteConversations]);
@@ -584,7 +627,9 @@ export default function ConversationHistoryScreen() {
       </div>
 
       {/* Conversation list */}
-      <div className={`flex flex-col min-w-0 border-r border-border bg-background ${selectedConversation ? 'hidden lg:flex lg:w-[420px] xl:w-[480px] shrink-0' : 'flex-1'}`}>
+      <div
+        className={`flex flex-col min-w-0 border-r border-border bg-background ${selectedConversation ? 'hidden lg:flex lg:w-[420px] xl:w-[480px] shrink-0' : 'flex-1'}`}
+      >
         <ConversationList
           conversations={conversations}
           selectedFolder={selectedFolder}
@@ -616,12 +661,24 @@ export default function ConversationHistoryScreen() {
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
             <div className="w-16 h-16 rounded-2xl bg-muted flex items-center justify-center mb-4">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-muted-foreground">
+              <svg
+                width="28"
+                height="28"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                className="text-muted-foreground"
+              >
                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
               </svg>
             </div>
-            <p className="text-sm font-medium text-muted-foreground">Select a conversation to preview</p>
-            <p className="text-xs text-muted-foreground/60 mt-1">Click any conversation from the list</p>
+            <p className="text-sm font-medium text-muted-foreground">
+              Select a conversation to preview
+            </p>
+            <p className="text-xs text-muted-foreground/60 mt-1">
+              Click any conversation from the list
+            </p>
           </div>
         )}
       </div>

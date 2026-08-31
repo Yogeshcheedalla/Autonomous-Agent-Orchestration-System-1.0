@@ -9,18 +9,11 @@ import {
   Trash2,
   ExternalLink,
   Brain,
-  Paperclip,
   MessageSquare,
-  Clock,
-  Hash,
-  Copy,
   Check,
-  Globe,
-  Lock,
   MoreHorizontal,
   Archive,
   Download,
-  Tag,
   Zap,
 } from 'lucide-react';
 import type { Conversation } from './ConversationHistoryScreen';
@@ -200,7 +193,7 @@ export default function ConversationPreview({
           {/* Summary */}
           <div>
             <div className="flex items-center gap-2 mb-3">
-              <Brain size={14} className="text-[#6C47FF]" />
+              <Brain size={14} className="text-primary" />
               <h3 className="text-sm font-semibold text-foreground">Conversation Summary</h3>
             </div>
             <div className="p-4 rounded-2xl bg-muted/30 border border-border">
@@ -212,7 +205,7 @@ export default function ConversationPreview({
           <div className="space-y-4">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
-                <MessageSquare size={14} className="text-[#00C9A7]" />
+                <MessageSquare size={14} className="text-accent" />
                 <h3 className="text-sm font-semibold text-foreground">Messages</h3>
               </div>
               <span className="text-xs text-muted-foreground font-mono">
@@ -221,31 +214,33 @@ export default function ConversationPreview({
             </div>
 
             <div className="space-y-3">
-              {previewMessages.length ? previewMessages.map((msg) => (
-                <div
-                  key={msg.id}
-                  className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}
-                >
+              {previewMessages.length ? (
+                previewMessages.map((msg) => (
                   <div
-                    className={`w-8 h-8 rounded-full shrink-0 flex items-center justify-center text-[10px] font-bold mt-1 ${
-                      msg.role === 'user'
-                        ? 'bg-[#6C47FF] text-white'
-                        : 'bg-muted border border-border text-muted-foreground'
-                    }`}
+                    key={msg.id}
+                    className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}
                   >
-                    {msg.role === 'user' ? 'U' : 'AI'}
+                    <div
+                      className={`w-8 h-8 rounded-full shrink-0 flex items-center justify-center text-[10px] font-bold mt-1 ${
+                        msg.role === 'user'
+                          ? 'bg-primary text-white'
+                          : 'bg-muted border border-border text-muted-foreground'
+                      }`}
+                    >
+                      {msg.role === 'user' ? 'U' : 'AI'}
+                    </div>
+                    <div
+                      className={`max-w-[85%] px-4 py-3 rounded-2xl text-xs leading-relaxed ${
+                        msg.role === 'user'
+                          ? 'bg-primary text-white rounded-tr-sm'
+                          : 'bg-muted border border-border text-foreground rounded-tl-sm'
+                      }`}
+                    >
+                      {msg.content}
+                    </div>
                   </div>
-                  <div
-                    className={`max-w-[85%] px-4 py-3 rounded-2xl text-xs leading-relaxed ${
-                      msg.role === 'user'
-                        ? 'bg-[#6C47FF] text-white rounded-tr-sm'
-                        : 'bg-muted border border-border text-foreground rounded-tl-sm'
-                    }`}
-                  >
-                    {msg.content}
-                  </div>
-                </div>
-              )) : (
+                ))
+              ) : (
                 <div className="rounded-2xl border border-border bg-muted/30 px-4 py-6 text-center text-xs text-muted-foreground">
                   No saved messages are available for this conversation yet.
                 </div>
@@ -256,7 +251,7 @@ export default function ConversationPreview({
               <Link
                 href="/chat-interface"
                 onClick={() => sessionStorage.setItem('akansha-active-session', conversation.id)}
-                className="flex items-center justify-center gap-2 w-full px-4 py-3 rounded-2xl bg-[#6C47FF] hover:bg-[#5A35EE] text-white text-sm font-medium transition-all duration-150 active:scale-[0.98] shadow-sm shadow-[#6C47FF]/20"
+                className="flex items-center justify-center gap-2 w-full px-4 py-3 rounded-2xl bg-primary hover:bg-primary-hover text-white text-sm font-medium transition-all duration-150 active:scale-[0.98] shadow-sm shadow-primary/20"
               >
                 <Zap size={15} />
                 Continue this Conversation
